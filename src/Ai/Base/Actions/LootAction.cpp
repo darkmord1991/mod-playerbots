@@ -402,7 +402,10 @@ bool StoreLootAction::Execute(Event event)
         if (!proto)
             continue;
 
-        if (!IsRealPlayer(botAI->GetMaster()) && AI_VALUE(uint8, "bag space") > 80)
+        // Unattended bots stop hoarding well before the bags fill up. Bots serving a real master keep
+        // looting for them, but must still stop once the bags are genuinely full: every attempt past that
+        // point fails with EQUIP_ERR_INVENTORY_FULL and is reported to the master as chat spam.
+        if (AI_VALUE(uint8, "bag space") > (IsRealPlayer(botAI->GetMaster()) ? 99 : 80))
         {
             uint32 maxStack = proto->GetMaxStackSize();
             if (maxStack == 1)

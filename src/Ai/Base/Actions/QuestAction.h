@@ -30,6 +30,7 @@ protected:
     bool AcceptQuest(Quest const* quest, ObjectGuid questGiver);
     bool ProcessQuests(ObjectGuid questGiver);
     bool ProcessQuests(WorldObject* questGiver);
+    static bool HasWalkableQuestList(WorldObject* questGiver);
 };
 
 class QuestUpdateCompleteAction : public Action

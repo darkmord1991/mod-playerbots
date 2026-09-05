@@ -5,7 +5,9 @@
  */
 
 #include "PlayerbotAI.h"
+
 #include "AiFactory.h"
+#include "BotStartLocation.h"
 #include "BudgetValues.h"
 #include "ChannelMgr.h"
 #include "CharacterPackets.h"
@@ -39,6 +41,7 @@
 #include "PlayerbotMgr.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
+#include "RaceMgr.h"
 #include "PositionValue.h"
 #include "RBAC.h"
 #include "RandomPlayerbotMgr.h"
@@ -3033,11 +3036,30 @@ bool PlayerbotAI::TellMasterNoFacing(std::string const text, PlayerbotSecurityLe
         ChatMsg type = CHAT_MSG_WHISPER;
         if (currentChat.second - time(nullptr) >= 1)
             type = currentChat.first;
+        else if (Group* group = bot->GetGroup())
+        {
+            // Talk to the whole party instead of whispering the master alone, so the other members can see
+            // what the bot is doing. Raid groups use raid chat, since party chat only reaches one subgroup.
+            if (master && group->IsMember(master->GetGUID()))
+                type = group->isRaidGroup() ? CHAT_MSG_RAID : CHAT_MSG_PARTY;
+        }
 
-        WorldPacket data;
-        ChatHandler::BuildChatPacket(data, type == CHAT_MSG_ADDON ? CHAT_MSG_PARTY : type,
-                                     type == CHAT_MSG_ADDON ? LANG_ADDON : LANG_UNIVERSAL, bot, nullptr, text.c_str());
-        master->SendDirectMessage(&data);
+        // SayToRaid/SayToParty deliver to the real players in the group only: bots parse party and raid chat
+        // as commands, so broadcasting to them as well would have bots answering each other.
+        bool told = false;
+        if (type == CHAT_MSG_RAID)
+            told = SayToRaid(text);
+        else if (type == CHAT_MSG_PARTY)
+            told = SayToParty(text);
+
+        if (!told)
+        {
+            WorldPacket data;
+            ChatHandler::BuildChatPacket(data, type == CHAT_MSG_ADDON ? CHAT_MSG_PARTY : type,
+                                         type == CHAT_MSG_ADDON ? LANG_ADDON : LANG_UNIVERSAL, bot, nullptr,
+                                         text.c_str());
+            master->SendDirectMessage(&data);
+        }
     }
 
     return true;
@@ -4409,8 +4431,13 @@ bool IsSelfBot(Player* player)
 
 bool IsAlliance(uint8 race)
 {
-    return race == RACE_HUMAN || race == RACE_DWARF || race == RACE_NIGHTELF || race == RACE_GNOME ||
-           race == RACE_DRAENEI;
+    // Read the faction split from ChrRaces.dbc rather than listing races here -- this realm has
+    // playable races beyond the stock ten (Worgen, Pandaren, Kul Tiran, Dark Iron, ...), and a
+    // hardcoded list silently files every one of them under Horde.
+    if (!race)
+        return false;
+
+    return (sRaceMgr->GetAllianceRaceMask() & (1 << (race - 1))) != 0;
 }
 
 Player* PlayerbotAI::FindNewMaster()
@@ -6492,10 +6519,10 @@ bool PlayerbotAI::StarterLevelDistanceCheck(Player* player, WorldLocation const&
     float dis = 0.0f;
     if (fromStartUp)
     {
-        PlayerInfo const* pInfo = sObjectMgr->GetPlayerInfo(player->getRace(true), player->getClass());
-        if (loc.GetMapId() != pInfo->mapId)
+        BotStartLocation const* pInfo = BotStartLocations::Get(player->getRace(true), player->getClass());
+        if (!pInfo || loc.GetMapId() != pInfo->mapId)
             return false;
-        dis = loc.GetExactDist(pInfo->positionX, pInfo->positionY, pInfo->positionZ);
+        dis = loc.GetExactDist(pInfo->x, pInfo->y, pInfo->z);
     }
     else
     {

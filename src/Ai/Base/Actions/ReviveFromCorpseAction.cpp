@@ -5,6 +5,8 @@
  */
 
 #include "ReviveFromCorpseAction.h"
+
+#include "BotStartLocation.h"
 #include "Corpse.h"
 #include "Event.h"
 #include "FleeManager.h"
@@ -262,16 +264,19 @@ GraveyardStruct const* SpiritHealerAction::GetGrave(bool startZone)
     {
         for (uint32 cls = 0; cls < MAX_CLASSES; cls++)
         {
-            PlayerInfo const* info = sObjectMgr->GetPlayerInfo(race, cls);
+            if (!sObjectMgr->GetPlayerInfo(race, cls))
+                continue;
+
+            BotStartLocation const* info = BotStartLocations::Get(uint8(race), uint8(cls));
             if (!info)
                 continue;
 
             uint32 areaId = 0;
             uint32 zoneId = 0;
-            sMapMgr->GetZoneAndAreaId(bot->GetPhaseMask(), zoneId, areaId, info->mapId, info->positionX,
-                                      info->positionY, info->positionZ);
+            sMapMgr->GetZoneAndAreaId(bot->GetPhaseMask(), zoneId, areaId, info->mapId, info->x,
+                                      info->y, info->z);
 
-            NewGrave = sGraveyard->GetClosestGraveyard(info->mapId, info->positionX, info->positionY, info->positionZ,
+            NewGrave = sGraveyard->GetClosestGraveyard(info->mapId, info->x, info->y, info->z,
                                                        bot->GetTeamId(), areaId, zoneId, cls == CLASS_DEATH_KNIGHT);
             if (!NewGrave)
                 continue;

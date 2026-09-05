@@ -379,7 +379,10 @@ AiPlayerbot.PassiveDelay = 10000
 AiPlayerbot.RepeatDelay = 2000
 
 # Delay timers
-AiPlayerbot.ErrorDelay = 100
+# ErrorDelay is the window over which bot error messages ("My inventory is full", ...) are collected before
+# being printed to the master as one aggregated line. It is rounded down to whole seconds, with a floor of
+# 1 second, so values below 1000 all behave the same: one line per second per distinct error.
+AiPlayerbot.ErrorDelay = 10000
 AiPlayerbot.RpgDelay = 10000
 AiPlayerbot.SitDelay = 20000
 # ReturnDelay has a minimum value of 2000 - lower values will cause a crash!
@@ -524,6 +527,14 @@ AiPlayerbot.ForceRebuffOnReadyCheck = 0
 # pass has already run, so small values are safe.
 # Default: 60
 AiPlayerbot.ForceRebuffMarginSecs = 60
+
+# Bots in a group open a rebuff pass of their own this often (seconds) while out of combat, so buffs
+# that ran out during a dungeon run are restored between pulls instead of only on a ready check or the
+# "rebuff" command. Buffs still running are topped off using ForceRebuffMarginSecs above. Bots that are
+# in combat when the interval elapses rebuff as soon as the fight ends. Solo bots are not included: they
+# already recast buffs that are missing outright.
+# Default: 300 (5 minutes), 0 disables
+AiPlayerbot.ForceRebuffIntervalSecs = 300
 
 # Bots can flee from enemies
 AiPlayerbot.FleeingEnabled = 1
@@ -2715,3 +2726,45 @@ AiPlayerbot.TargetPosRecalcDistance = 0.1
 
 # Allow bots to be summoned near innkeepers
 AiPlayerbot.SummonAtInnkeepersEnabled = 1
+
+###############################################################################
+# DARKCHAOS: ITEM UPGRADE SPENDING
+#
+# Bots earn the DC item upgrade currencies (Upgrade Tokens, Artifact Essence,
+# Emberwood Sap) from the same quest / kill / PvP hooks players do, but until
+# now had no way to spend them -- the upgrade UI needs a real client -- so the
+# currency piled up and their gear never gained the tier stat multiplier.
+#
+# The "dc upgrade" non-combat strategy fires the "dc upgrade items" action on
+# the "seldom" trigger; the action buys the cheapest available upgrade steps on
+# the bot's own equipped gear. It is a no-op when the DC upgrade scripts are not
+# loaded. Disable the whole thing with Enable = 0, or drop the strategy from a
+# bot at runtime with the non-combat strategy command: nc -dc upgrade
+#
+# Heirloom (is_artifact) tiers are never touched: they are priced from the
+# heirloom cost tables, not dc_item_upgrade_costs, so the generic path would
+# read a cost of zero and hand out free levels.
+###############################################################################
+
+# Master switch for bot-side upgrade spending.
+AiPlayerbot.DCItemUpgrade.Enable = 1
+
+# Seconds a bot must wait between runs, on top of the trigger's own rarity.
+# This is the knob that scales with roster size: the world thread sees roughly
+# (online bots / this value) runs per second, each buying up to StepsPerRun
+# levels. At 1000 bots the default works out to ~0.3 runs/sec.
+AiPlayerbot.DCItemUpgrade.CooldownSeconds = 3600
+
+# Upgrade steps bought per run of the action. Each step ends in a full stat
+# re-apply for that bot, so this and CooldownSeconds together bound the cost.
+AiPlayerbot.DCItemUpgrade.StepsPerRun = 3
+
+# Bots below this level are left alone.
+AiPlayerbot.DCItemUpgrade.MinLevel = 10
+
+# Percentage of each tier's max upgrade level a bot will climb to. Lower it to
+# keep bots a step behind players in battlegrounds without disabling the system.
+AiPlayerbot.DCItemUpgrade.MaxLevelPercent = 100
+
+# Amount of each currency a bot keeps unspent.
+AiPlayerbot.DCItemUpgrade.CurrencyReserve = 0

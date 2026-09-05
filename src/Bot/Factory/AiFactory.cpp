@@ -581,8 +581,12 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
 
     if (!player->InBattleground())
     {
+        // "dc upgrade" (DarkChaos) spends the bot's item upgrade currency on its own
+        // gear. It is in the always-on list because "maintenance", the natural home
+        // for it, is commented out below and RandomBotNonCombatStrategies defaults
+        // to empty -- an action hung off that strategy would simply never fire.
         nonCombatEngine->addStrategiesNoInit("nc", "food", "chat", "follow", "default", "force rebuff", "quest", "loot",
-                                            "gather", "duel", "pvp", "buff", "mount", "emote", nullptr);
+                                            "gather", "duel", "pvp", "buff", "mount", "emote", "dc upgrade", nullptr);
     }
 
     if (sPlayerbotAIConfig.autoSaveMana && PlayerbotAI::IsHeal(player, true))

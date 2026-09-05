@@ -768,3 +768,21 @@ bool ForceRebuffPendingTrigger::IsActive()
 {
     return botAI->forceRebuff.IsPending();
 }
+
+bool PeriodicRebuffTrigger::IsActive()
+{
+    uint32 const intervalSecs = sPlayerbotAIConfig.forceRebuffIntervalSecs;
+    if (!intervalSecs)
+        return false;
+
+    // Solo bots already recast buffs that are missing outright; a pass that also tops off buffs which are
+    // merely running low is what a group needs, and keeping it to groups bounds the cost on a full roster.
+    if (!bot->GetGroup() || !bot->IsAlive() || bot->IsInCombat() || bot->IsMounted())
+        return false;
+
+    ForceRebuffState const& rebuff = botAI->forceRebuff;
+    if (rebuff.IsPending())
+        return false;
+
+    return rebuff.MsSinceBegin() >= intervalSecs * IN_MILLISECONDS;
+}

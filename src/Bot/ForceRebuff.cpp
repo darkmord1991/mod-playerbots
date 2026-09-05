@@ -11,6 +11,7 @@
 #include "PlayerbotAIConfig.h"
 #include "Timer.h"
 #include <algorithm>
+#include <limits>
 
 static constexpr uint32 REBUFF_WINDOW_TIMEOUT_MS = 2 * MINUTE * IN_MILLISECONDS;
 
@@ -30,6 +31,11 @@ bool ForceRebuffState::IsOnGlobalCooldown() const
 bool ForceRebuffState::IsPending() const
 {
     return pending && getMSTimeDiff(beginMs, getMSTime()) < REBUFF_WINDOW_TIMEOUT_MS;
+}
+
+uint32 ForceRebuffState::MsSinceBegin() const
+{
+    return beginMs ? getMSTimeDiff(beginMs, getMSTime()) : std::numeric_limits<uint32>::max();
 }
 
 void ForceRebuffState::NoteBuffWork()
@@ -88,6 +94,10 @@ public:
 void ForceRebuffStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     triggers.push_back(new TriggerNode("force rebuff pending", { NextAction("ready reply", 6.0f) }));
+    // Opens a rebuff pass on its own every ForceRebuffIntervalSecs, so buffs that ran out during a dungeon
+    // run are topped off between pulls. Relevance sits above "ready reply" (which closes the pass) and
+    // below the buff casts themselves, so the window opens first and the buffs are cast inside it.
+    triggers.push_back(new TriggerNode("periodic rebuff", { NextAction("force rebuff", 10.0f) }));
 }
 
 void ForceRebuffStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)

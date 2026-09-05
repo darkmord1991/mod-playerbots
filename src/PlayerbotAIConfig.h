@@ -123,6 +123,7 @@ public:
     uint32 missingBuffReagentMessageCooldown;
     bool forceRebuffOnReadyCheck;
     uint32 forceRebuffMarginSecs;
+    uint32 forceRebuffIntervalSecs;
     bool autoAvoidAoe;
     float maxAoeAvoidRadius;
     std::set<uint32> aoeAvoidSpellWhitelist;

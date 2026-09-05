@@ -46,6 +46,7 @@ public:
         creators["very often"] = &TriggerContext::very_often;
 
         creators["force rebuff pending"] = &TriggerContext::force_rebuff_pending;
+        creators["periodic rebuff"] = &TriggerContext::periodic_rebuff;
 
         creators["target critical health"] = &TriggerContext::TargetCriticalHealth;
 
@@ -338,6 +339,7 @@ private:
     static Trigger* Timer(PlayerbotAI* botAI) { return new TimerTrigger(botAI); }
     static Trigger* TimerBG(PlayerbotAI* botAI) { return new TimerBGTrigger(botAI); }
     static Trigger* force_rebuff_pending(PlayerbotAI* botAI) { return new ForceRebuffPendingTrigger(botAI); }
+    static Trigger* periodic_rebuff(PlayerbotAI* botAI) { return new PeriodicRebuffTrigger(botAI); }
     static Trigger* NoTarget(PlayerbotAI* botAI) { return new NoTargetTrigger(botAI); }
     static Trigger* TargetInSight(PlayerbotAI* botAI) { return new TargetInSightTrigger(botAI); }
     static Trigger* not_dps_target_active(PlayerbotAI* botAI) { return new NotDpsTargetActiveTrigger(botAI); }

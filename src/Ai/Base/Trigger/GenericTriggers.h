@@ -984,4 +984,15 @@ public:
     bool IsActive() override;
 };
 
+// Fires once per AiPlayerbot.ForceRebuffIntervalSecs while out of combat, so buffs that expired during a
+// dungeon run get topped off between pulls. Checked every few seconds rather than once per interval: a bot
+// that is in combat when the interval elapses rebuffs as soon as the fight ends, not an interval later.
+class PeriodicRebuffTrigger : public Trigger
+{
+public:
+    PeriodicRebuffTrigger(PlayerbotAI* botAI) : Trigger(botAI, "periodic rebuff", 5) {}
+
+    bool IsActive() override;
+};
+
 #endif

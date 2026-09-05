@@ -5,6 +5,8 @@
  */
 
 #include "TravelNode.h"
+
+#include "BotStartLocation.h"
 #include "BudgetValues.h"
 #include "PathGenerator.h"
 #include "Playerbots.h"
@@ -1662,14 +1664,21 @@ void TravelNodeMap::generateStartNodes()
 
     for (uint32 i = 0; i < sRaceMgr->GetMaxRaces(); i++)
     {
+        // Races that borrow another race's start would add a second node on top of it.
+        if (BotStartLocations::GetDonorRace(uint8(i)) != i)
+            continue;
+
         for (uint32 j = 0; j < MAX_CLASSES; j++)
         {
-            PlayerInfo const* info = sObjectMgr->GetPlayerInfo(i, j);
+            if (!sObjectMgr->GetPlayerInfo(i, j))
+                continue;
+
+            BotStartLocation const* info = BotStartLocations::Get(uint8(i), uint8(j));
 
             if (!info)
                 continue;
 
-            WorldPosition pos(info->mapId, info->positionX, info->positionY, info->positionZ, info->orientation);
+            WorldPosition pos(info->mapId, info->x, info->y, info->z, info->o);
 
             std::string const nodeName = startNames[i] + " start";
 

@@ -1698,7 +1698,13 @@ void PlayerbotMgr::TellError(std::string const botName, std::string const text)
 void PlayerbotMgr::CheckTellErrors(uint32 /*elapsed*/)
 {
     time_t now = time(nullptr);
-    if ((now - lastErrorTell) < sPlayerbotAIConfig.errorDelay / 1000)
+    // ErrorDelay is milliseconds, but the window below is in seconds: anything under 1000 truncates to a
+    // zero-second window, so a bot repeating the same error every tick gets a fresh line on every update.
+    time_t delay = sPlayerbotAIConfig.errorDelay / 1000;
+    if (delay < 1)
+        delay = 1;
+
+    if ((now - lastErrorTell) < delay)
         return;
 
     lastErrorTell = now;

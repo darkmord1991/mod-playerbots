@@ -5,13 +5,16 @@
  */
 
 #include "RandomPlayerbotFactory.h"
+
 #include "AccountMgr.h"
 #include "ArenaTeamMgr.h"
+#include "BotStartLocation.h"
 #include "CharacterCache.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "DatabaseEnv.h"
 #include "Log.h"
+#include "MapMgr.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotOperations.h"
@@ -144,10 +147,24 @@ Player* RandomPlayerbotFactory::CreateRandomBot(WorldSession* session, uint8 cls
     }
 
     //uint8 skinColor = skinColors[urand(0, skinColors.size() - 1)]; //not used, line marked for removal.
+
+    // urand(0, v.size() - 1) on an empty vector underflows to SIZE_MAX and then indexes a null
+    // buffer, so every pick below has to be guarded on what CharSections.dbc actually contains
+    // rather than on a hardcoded race list.
+    if (faces.empty() || hairs.empty())
+    {
+        LOG_ERROR("playerbots", "CharSections.dbc has no face/hair rows for race {} gender {} - cannot create bot",
+                race, gender);
+        return nullptr;
+    }
+
     std::pair<uint8, uint8> face = faces[urand(0, faces.size() - 1)];
     std::pair<uint8, uint8> hair = hairs[urand(0, hairs.size() - 1)];
 
-    bool excludeCheck = (race == RACE_TAUREN) || (race == RACE_DRAENEI) ||
+    // The race list here only covers the stock races. This realm also has playable races with no
+    // facial-hair rows at all (Pandaren, Vulpera, Zandalari, Kul Tiran), and their males fell
+    // through to an out-of-bounds read, so the emptiness check has to come first.
+    bool excludeCheck = facialHairTypes.empty() || (race == RACE_TAUREN) || (race == RACE_DRAENEI) ||
                         (gender == GENDER_FEMALE && race != RACE_NIGHTELF && race != RACE_UNDEAD_PLAYER);
     uint8 facialHair = excludeCheck ? 0 : facialHairTypes[urand(0, facialHairTypes.size() - 1)];
 
@@ -164,6 +181,28 @@ Player* RandomPlayerbotFactory::CreateRandomBot(WorldSession* session, uint8 cls
         LOG_ERROR("playerbots", "Unable to create random bot - name: \"{}\", race: {}, class: {}",
                 name.c_str(), race, cls);
         return nullptr;
+    }
+
+    // Player::Create() placed the bot using `playercreateinfo`, which on this realm is the
+    // onboarding hub for every race. Move it to the stock start for its race instead.
+    if (BotStartLocation const* start = BotStartLocations::Get(race, cls))
+    {
+        player->Relocate(start->x, start->y, start->z, start->o);
+
+        // SetMap() aborts when a different map is already attached, so the map Create() put
+        // the bot on has to be released first.
+        if (player->GetMapId() != start->mapId)
+        {
+            player->ResetMap();
+            player->SetMap(sMapMgr->CreateMap(start->mapId, player));
+        }
+
+        player->UpdatePositionData();
+    }
+    else
+    {
+        LOG_WARN("playerbots", "No bot start location mapped for race {} - bot \"{}\" starts at the realm default",
+                race, name.c_str());
     }
 
     player->setCinematic(2);

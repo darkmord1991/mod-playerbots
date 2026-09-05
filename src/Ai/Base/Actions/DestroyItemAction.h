@@ -20,7 +20,9 @@ public:
     bool Execute(Event event) override;
 
 protected:
-    void DestroyItem(FindItemVisitor* visitor);
+    // silent: skip the "<item> destroyed" whisper. Housekeeping destroys run unattended and would otherwise
+    // whisper the master once per item; an explicit "destroy" chat command still reports what it did.
+    void DestroyItem(FindItemVisitor* visitor, bool silent = false);
 };
 
 class SmartDestroyItemAction : public DestroyItemAction

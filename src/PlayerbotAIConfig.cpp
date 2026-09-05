@@ -163,6 +163,8 @@ bool PlayerbotAIConfig::Initialize()
         "AiPlayerbot.MissingBuffReagentMessageCooldown", 300);
     forceRebuffOnReadyCheck = sConfigMgr->GetOption<bool>("AiPlayerbot.ForceRebuffOnReadyCheck", false);
     forceRebuffMarginSecs = std::min(sConfigMgr->GetOption<uint32>("AiPlayerbot.ForceRebuffMarginSecs", 60), 3600u);
+    forceRebuffIntervalSecs =
+        std::min(sConfigMgr->GetOption<uint32>("AiPlayerbot.ForceRebuffIntervalSecs", 300), 3600u);
     autoAvoidAoe = sConfigMgr->GetOption<bool>("AiPlayerbot.AutoAvoidAoe", true);
     maxAoeAvoidRadius = sConfigMgr->GetOption<float>("AiPlayerbot.MaxAoeAvoidRadius", 15.0f);
     LoadSet<std::set<uint32>>(sConfigMgr->GetOption<std::string>("AiPlayerbot.AoeAvoidSpellWhitelist", "50759,57491,13810,29946"),

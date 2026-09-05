@@ -9,6 +9,8 @@
 #include "Chat.h"
 #include "ChatHelper.h"
 #include "Event.h"
+#include "GameObject.h"
+#include "GossipDef.h"
 #include "ItemTemplate.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
@@ -16,6 +18,7 @@
 #include "ReputationMgr.h"
 #include "ServerFacade.h"
 #include <algorithm>
+#include <iterator>
 #include <sstream>
 
 bool QuestAction::Execute(Event event)
@@ -180,6 +183,31 @@ bool QuestAction::ProcessQuests(ObjectGuid questGiver)
     return false;
 }
 
+// Returns false for quest givers whose relation list exceeds what the quest gossip menu can hold.
+bool QuestAction::HasWalkableQuestList(WorldObject* questGiver)
+{
+    QuestRelationBounds relations;
+    QuestRelationBounds involved;
+
+    if (Creature* creature = questGiver->ToCreature())
+    {
+        relations = sObjectMgr->GetCreatureQuestRelationBounds(creature->GetEntry());
+        involved = sObjectMgr->GetCreatureQuestInvolvedRelationBounds(creature->GetEntry());
+    }
+    else if (GameObject* gameObject = questGiver->ToGameObject())
+    {
+        relations = sObjectMgr->GetGOQuestRelationBounds(gameObject->GetEntry());
+        involved = sObjectMgr->GetGOQuestInvolvedRelationBounds(gameObject->GetEntry());
+    }
+    else
+        return true;
+
+    std::ptrdiff_t count = std::distance(relations.first, relations.second) +
+                           std::distance(involved.first, involved.second);
+
+    return count <= GOSSIP_MAX_MENU_ITEMS;
+}
+
 bool QuestAction::ProcessQuests(WorldObject* questGiver)
 {
     ObjectGuid guid = questGiver->GetGUID();
@@ -194,6 +222,12 @@ bool QuestAction::ProcessQuests(WorldObject* questGiver)
 
     if (!bot->HasInArc(CAST_ANGLE_IN_FRONT, questGiver, sPlayerbotAIConfig.sightDistance))
         bot->SetFacingToObject(questGiver);
+
+    // Quest givers that hold more relations than a gossip menu can carry are script-driven custom
+    // content (paginated gossip, dynamic per-instance quest lists). Walking their full relation list
+    // is both meaningless for the bot and expensive - CanTakeQuest runs once per relation, per tick.
+    if (!HasWalkableQuestList(questGiver))
+        return false;
 
     bot->SetTarget(guid);
     bot->PrepareQuestMenu(guid);

@@ -23,21 +23,29 @@ bool DestroyItemAction::Execute(Event event)
     return true;
 }
 
-void DestroyItemAction::DestroyItem(FindItemVisitor* visitor)
+void DestroyItemAction::DestroyItem(FindItemVisitor* visitor, bool silent)
 {
     IterateItems(visitor);
     std::vector<Item*> items = visitor->GetResult();
     for (Item* item : items)
     {
-        std::ostringstream out;
-        out << chat->FormatItem(item->GetTemplate()) << " destroyed";
-        botAI->TellMaster(out);
+        if (!silent)
+        {
+            std::ostringstream out;
+            out << chat->FormatItem(item->GetTemplate()) << " destroyed";
+            botAI->TellMaster(out);
+        }
 
         bot->DestroyItem(item->GetBagSlot(), item->GetSlot(), true);
     }
 }
 
-bool SmartDestroyItemAction::isUseful() { return !IsRealPlayer(botAI->GetMaster()); }
+// Attended bots (real player or selfbot master) are the ones that need this: they follow their master instead
+// of taking vendor trips of their own, so their bags fill up and never empty again, and every further loot
+// attempt fails with EQUIP_ERR_INVENTORY_FULL and is reported to the master as chat spam. Execute() only
+// lets them destroy grey items. Unattended bots keep the previous behaviour of not running this at all --
+// the aggressive branch below would destroy quest/vendor items, including the DC upgrade currencies.
+bool SmartDestroyItemAction::isUseful() { return botAI->HasGameClientMaster(); }
 
 bool SmartDestroyItemAction::Execute(Event /*event*/)
 {
@@ -46,8 +54,8 @@ bool SmartDestroyItemAction::Execute(Event /*event*/)
     if (bagSpace < 90)
         return false;
 
-    // Only destroy grey items when the master is a real player or selfbot, and the bot is in a real guild.
-    if (botAI->HasGameClientMaster() && botAI->IsInRealGuild())
+    // Only destroy grey items when the master is a real player or selfbot.
+    if (botAI->HasGameClientMaster())
     {
         std::set<Item*> items;
         FindItemsToTradeByQualityVisitor visitor(ITEM_QUALITY_POOR, 5);
@@ -57,7 +65,7 @@ bool SmartDestroyItemAction::Execute(Event /*event*/)
         for (auto& item : items)
         {
             FindItemByIdVisitor visitor(item->GetTemplate()->ItemId);
-            DestroyItem(&visitor);
+            DestroyItem(&visitor, true);
 
             bagSpace = AI_VALUE(uint8, "bag space");
 
@@ -93,7 +101,7 @@ bool SmartDestroyItemAction::Execute(Event /*event*/)
         for (auto& item : items)
         {
             FindItemByIdVisitor visitor(item->GetTemplate()->ItemId);
-            DestroyItem(&visitor);
+            DestroyItem(&visitor, true);
 
             bagSpace = AI_VALUE(uint8, "bag space");
 

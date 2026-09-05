@@ -26,6 +26,8 @@ public:
     void Begin(bool reply);
     void End() { pending = false; }
     bool IsPending() const;
+    // Milliseconds since the last pass was started, or uint32 max when no pass has run yet.
+    uint32 MsSinceBegin() const;
     bool ShouldReplyToReadyCheck() const { return replyToReadyCheck; }
 
     void NoteBuffWork();

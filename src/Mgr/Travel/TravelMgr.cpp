@@ -5,7 +5,9 @@
  */
 
 #include "TravelMgr.h"
+
 #include "AreaDefines.h"
+#include "BotStartLocation.h"
 #include "CellImpl.h"
 #include "ChatHelper.h"
 #include "Corpse.h"
@@ -4851,14 +4853,21 @@ void TravelMgr::PrepareDestinationCache()
     // Add travel hubs based on player start locations
     for (uint32 i = 1; i < sRaceMgr->GetMaxRaces(); i++)
     {
+        // Races that borrow another race's start would duplicate the donor's hub.
+        if (BotStartLocations::GetDonorRace(uint8(i)) != i)
+            continue;
+
         for (uint32 j = 1; j < MAX_CLASSES; j++)
         {
-            PlayerInfo const* info = sObjectMgr->GetPlayerInfo(i, j);
+            if (!sObjectMgr->GetPlayerInfo(i, j))
+                continue;
+
+            BotStartLocation const* info = BotStartLocations::Get(uint8(i), uint8(j));
 
             if (!info)
                 continue;
 
-            WorldPosition pos(info->mapId, info->positionX, info->positionY, info->positionZ, info->orientation);
+            WorldPosition pos(info->mapId, info->x, info->y, info->z, info->o);
 
             for (int32 l = 1; l <= 5; l++)
             {

@@ -14,6 +14,10 @@ void LootNonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode("far from loot target", { NextAction("move to loot", 7.0f) }));
     triggers.push_back(new TriggerNode("can loot", { NextAction("open loot", 8.0f) }));
     triggers.push_back(new TriggerNode("often", { NextAction("add all loot", 5.0f) }));
+    // Looting is what fills the bags up, so this is where they get freed again: "smart destroy item" is a
+    // no-op below 90% bag usage, and for these bots it only ever destroys greys. The "maintenance" strategy
+    // that normally hosts it is not enabled for any bot.
+    triggers.push_back(new TriggerNode("seldom", { NextAction("smart destroy item", 1.0f) }));
 }
 
 void GatherStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
