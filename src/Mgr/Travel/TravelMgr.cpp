@@ -4632,6 +4632,9 @@ void TravelMgr::PrepareZone2LevelBracket()
     zone2LevelBracket[AREA_SHOLAZAR_BASIN]      = {75, 80};
     zone2LevelBracket[AREA_WINTERGRASP]         = {79, 80};
 
+    // DarkChaos custom leveling zones
+    zone2LevelBracket[268]                      = {1, 80};  // Azshara Crater (map 37)
+
     // Override with values from config
     for (auto const& [zoneId, bracketPair] : sPlayerbotAIConfig.zoneBrackets)
         zone2LevelBracket[zoneId] = {bracketPair.first, bracketPair.second};
@@ -4645,6 +4648,27 @@ void TravelMgr::PrepareDestinationCache()
     uint32 bankerCount = 0;
 
     LOG_INFO("playerbots", "Preparing destination caches for {} levels...", maxLevel);
+
+    // Make sure every configured map exists before the creature loop below looks one up. The world only
+    // instantiates continents that carry a static transport (0, 1, 530, 571, ...) before scripts are
+    // initialised; PreloadAllNonInstancedMapGrids runs later. Without this a custom continent such as
+    // Azshara Crater (37) is dropped silently, because FindMap returns nullptr for every spawn on it.
+    for (uint32 configuredMapId : sPlayerbotAIConfig.randomBotMaps)
+    {
+        MapEntry const* configuredMap = sMapStore.LookupEntry(configuredMapId);
+        if (!configuredMap)
+        {
+            LOG_WARN("playerbots", "AiPlayerbot.RandomBotMaps lists map {}, which has no Map.dbc row - ignored.",
+                     configuredMapId);
+            continue;
+        }
+
+        if (configuredMap->Instanceable())
+            continue;
+
+        sMapMgr->CreateBaseMap(configuredMapId);
+    }
+
     // Temporary map to group creatures by entry and area
     std::map<std::tuple<uint16, int32, int32, int32>, std::vector<CreatureData>> tempLocsCache;
     std::map<uint32, std::map<uint32, std::vector<WorldLocation>>> tempCreatureCache;

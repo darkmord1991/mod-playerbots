@@ -20,4 +20,17 @@ void DCItemUpgradeStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
             }
         )
     );
+
+    // Heirlooms ride the same strategy rather than getting their own: a bot that
+    // is due one is due the other, and they draw on different currencies
+    // (heirlooms are paid in essence, ordinary upgrades in tokens/sap), so they
+    // do not compete for the same balance.
+    triggers.push_back(
+        new TriggerNode(
+            "seldom",
+            {
+                NextAction("dc heirloom upgrade", 0.9f)
+            }
+        )
+    );
 }

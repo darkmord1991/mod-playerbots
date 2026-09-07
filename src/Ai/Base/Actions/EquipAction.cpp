@@ -14,6 +14,30 @@
 #include "StatsWeightCalculator.h"
 #include <utility>
 
+namespace
+{
+    // HandleAutoEquipItemSlotOpcode drops the request without any feedback whenever CanEquipItem
+    // refuses it (combat, an occupied slot, a script veto), so the item stays in the bags and the
+    // next scan picks it up again. Report back whether the item really landed in the slot, so that
+    // callers only announce equips that happened instead of spamming the party once per pass.
+    bool AutoEquipToSlot(Player* bot, Item* item, uint8 dstSlot)
+    {
+        uint16 const dstPos = (INVENTORY_SLOT_BAG_0 << 8) | dstSlot;
+        if (item->GetPos() == dstPos)
+            return false;
+
+        WorldPacket packet(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
+        ObjectGuid itemGuid = item->GetGUID();
+        packet << itemGuid << dstSlot;
+
+        WorldPackets::Item::AutoEquipItemSlot nicePacket(std::move(packet));
+        nicePacket.Read();
+        bot->GetSession()->HandleAutoEquipItemSlotOpcode(nicePacket);
+
+        return bot->GetItemByPos(INVENTORY_SLOT_BAG_0, dstSlot) == item;
+    }
+}
+
 bool EquipAction::Execute(Event event)
 {
     std::string const text = event.getParam();
@@ -92,6 +116,9 @@ void EquipAction::EquipItem(Item* item)
             uint16 src = ((bagIndex << 8) | slot);
             uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | newBagSlot);
             bot->SwapItem(src, dst);
+            if (bot->GetItemByPos(INVENTORY_SLOT_BAG_0, newBagSlot) != item)
+                return;
+
             equippedBag = true;
         }
     }
@@ -103,13 +130,8 @@ void EquipAction::EquipItem(Item* item)
         // Handle them early here to avoid issues.
         if (invType == INVTYPE_RANGED || invType == INVTYPE_THROWN || invType == INVTYPE_RANGEDRIGHT)
         {
-            WorldPacket packet(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
-            ObjectGuid itemguid = item->GetGUID();
-            packet << itemguid << uint8(EQUIPMENT_SLOT_RANGED);
-
-            WorldPackets::Item::AutoEquipItemSlot nicePacket(std::move(packet));
-            nicePacket.Read();
-            bot->GetSession()->HandleAutoEquipItemSlotOpcode(nicePacket);
+            if (!AutoEquipToSlot(bot, item, EQUIPMENT_SLOT_RANGED))
+                return;
 
             std::ostringstream out;
             out << "Equipping " << chat->FormatItem(itemProto) << " in ranged slot";
@@ -202,30 +224,20 @@ void EquipAction::EquipItem(Item* item)
             if (canGoMain && betterThanMH && mhConditionOK)
             {
                 // Equip new weapon in main hand
-                {
-                    WorldPacket eqPacket(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
-                    ObjectGuid newItemGuid = item->GetGUID();
-                    eqPacket << newItemGuid << uint8(EQUIPMENT_SLOT_MAINHAND);
-                    WorldPackets::Item::AutoEquipItemSlot nicePacket(std::move(eqPacket));
-                    nicePacket.Read();
-                    bot->GetSession()->HandleAutoEquipItemSlotOpcode(nicePacket);
-                }
+                if (!AutoEquipToSlot(bot, item, EQUIPMENT_SLOT_MAINHAND))
+                    return;
 
                 // Try moving old main hand weapon to offhand if beneficial
                 if (mainHandItem && mainHandCanGoOff && (!offHandItem || mainHandScore > offHandScore))
                 {
                     ItemTemplate const* oldMHProto = mainHandItem->GetTemplate();
 
-                    WorldPacket offhandPacket(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
-                    ObjectGuid oldMHGuid = mainHandItem->GetGUID();
-                    offhandPacket << oldMHGuid << uint8(EQUIPMENT_SLOT_OFFHAND);
-                    WorldPackets::Item::AutoEquipItemSlot nicePacket(std::move(offhandPacket));
-                    nicePacket.Read();
-                    bot->GetSession()->HandleAutoEquipItemSlotOpcode(nicePacket);
-
-                    std::ostringstream moveMsg;
-                    moveMsg << "Main hand upgrade found. Moving " << chat->FormatItem(oldMHProto) << " to offhand";
-                    botAI->TellMaster(moveMsg);
+                    if (AutoEquipToSlot(bot, mainHandItem, EQUIPMENT_SLOT_OFFHAND))
+                    {
+                        std::ostringstream moveMsg;
+                        moveMsg << "Main hand upgrade found. Moving " << chat->FormatItem(oldMHProto) << " to offhand";
+                        botAI->TellMaster(moveMsg);
+                    }
                 }
 
                 std::ostringstream out;
@@ -238,12 +250,8 @@ void EquipAction::EquipItem(Item* item)
             else if (canGoOff && newItemScore > offHandScore)
             {
                 // Equip in offhand
-                WorldPacket eqPacket(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
-                ObjectGuid newItemGuid = item->GetGUID();
-                eqPacket << newItemGuid << uint8(EQUIPMENT_SLOT_OFFHAND);
-                WorldPackets::Item::AutoEquipItemSlot nicePacket(std::move(eqPacket));
-                nicePacket.Read();
-                bot->GetSession()->HandleAutoEquipItemSlotOpcode(nicePacket);
+                if (!AutoEquipToSlot(bot, item, EQUIPMENT_SLOT_OFFHAND))
+                    return;
 
                 std::ostringstream out;
                 out << "Equipping " << chat->FormatItem(itemProto) << " in offhand";
@@ -315,14 +323,8 @@ void EquipAction::EquipItem(Item* item)
         }
 
         // Equip the item in the chosen slot
-        {
-            WorldPacket packet(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
-            ObjectGuid itemguid = item->GetGUID();
-            packet << itemguid << dstSlot;
-            WorldPackets::Item::AutoEquipItemSlot nicePacket(std::move(packet));
-            nicePacket.Read();
-            bot->GetSession()->HandleAutoEquipItemSlotOpcode(nicePacket);
-        }
+        if (!AutoEquipToSlot(bot, item, dstSlot))
+            return;
     }
 
     std::ostringstream out;
@@ -359,8 +361,12 @@ ItemIds EquipAction::SelectInventoryItemsToEquip()
         else
             itemUsageParam = std::to_string(itemId);
 
+        // ITEM_USAGE_BAD_EQUIP is deliberately not accepted here: it means the bot cannot make use of
+        // the item (no stat weight, wrong armor class), and items such as tabards and shirts are always
+        // reported as BAD_EQUIP. Trying to equip them anyway achieves nothing and re-announces the same
+        // item on every pass.
         ItemUsage usage = AI_VALUE2(ItemUsage, "item upgrade", itemUsageParam);
-        if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_BAD_EQUIP)
+        if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE)
             items.insert(itemId);
     }
     return items;

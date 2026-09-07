@@ -6520,6 +6520,12 @@ bool PlayerbotAI::StarterLevelDistanceCheck(Player* player, WorldLocation const&
     if (fromStartUp)
     {
         BotStartLocation const* pInfo = BotStartLocations::Get(player->getRace(true), player->getClass());
+
+        // A bot living on Azshara Crater is measured against the crater hub, not against the stock
+        // start its race would otherwise use - that one is on a different map entirely.
+        if (player->GetMapId() == BotStartLocations::GetCraterStart().mapId)
+            pInfo = &BotStartLocations::GetCraterStart();
+
         if (!pInfo || loc.GetMapId() != pInfo->mapId)
             return false;
         dis = loc.GetExactDist(pInfo->x, pInfo->y, pInfo->z);

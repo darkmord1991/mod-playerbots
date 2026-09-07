@@ -436,7 +436,9 @@ bool PlayerbotAIConfig::Initialize()
         // The Burning Crusade - Zones
         3483, 3518, 3519, 3520, 3521, 3522, 3523, 4080,
         // Wrath of the Lich King - Zones
-        65, 66, 67, 210, 394, 495, 2817, 3537, 3711, 4197
+        65, 66, 67, 210, 394, 495, 2817, 3537, 3711, 4197,
+        // DarkChaos custom leveling zones
+        268
     };
 
     for (uint32 zoneId : zoneIds)
@@ -728,6 +730,11 @@ bool PlayerbotAIConfig::Initialize()
     autoTeleportForLevel = sConfigMgr->GetOption<bool>("AiPlayerbot.AutoTeleportForLevel", false);
     autoDoQuests = sConfigMgr->GetOption<bool>("AiPlayerbot.AutoDoQuests", true);
     enableNewRpgStrategy = sConfigMgr->GetOption<bool>("AiPlayerbot.EnableNewRpgStrategy", true);
+
+    azsharaCraterMaxBots = sConfigMgr->GetOption<uint32>("AiPlayerbot.AzsharaCraterMaxBots", 100);
+    azsharaCraterGraduationLevel =
+        sConfigMgr->GetOption<uint32>("AiPlayerbot.AzsharaCraterGraduationLevel", 80);
+    deathKnightStartLevel = sConfigMgr->GetOption<uint32>("AiPlayerbot.DeathKnightStartLevel", 55);
 
     RpgStatusProbWeight[RPG_WANDER_RANDOM] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.WanderRandom", 15);
     RpgStatusProbWeight[RPG_WANDER_NPC] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.WanderNpc", 20);

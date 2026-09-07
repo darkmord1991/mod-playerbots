@@ -6,8 +6,11 @@
 
 #include "BotStartLocation.h"
 
+#include "PlayerbotAIConfig.h"
 #include "SharedDefines.h"
+#include "World.h"
 
+#include <algorithm>
 #include <unordered_map>
 
 namespace
@@ -27,6 +30,9 @@ namespace
         { RACE_DRAENEI,        { 530, 3526, -3961.64f, -13931.2f,    100.615f,  2.08364f  } }, // Ammen Vale, Azuremyst Isle
     };
 
+    // The realm's own start, verbatim from `playercreateinfo` -- all 180 race/class rows share it.
+    BotStartLocation const CraterStart = { 37, 268, 131.82f, 1025.28f, 296.27f, 5.483f };
+
     // Death knights ignore their race's start entirely -- stock puts every one of them in
     // Ebon Hold. The per-race jitter in playercreateinfo is cosmetic; one spot is enough.
     BotStartLocation const DeathKnightStart = { 609, 4298, 2356.21f, -5662.21f, 426.026f, 3.65997f };
@@ -44,6 +50,14 @@ namespace
         { RACE_KUL_TIRAN,         RACE_HUMAN    }, // Alliance -> Northshire, Elwynn Forest
         { RACE_DARK_IRON_DWARF,   RACE_DWARF    }, // Alliance -> Coldridge Valley, Dun Morogh
     };
+}
+
+BotStartLocation const& BotStartLocations::GetCraterStart() { return CraterStart; }
+
+uint32 BotStartLocations::GetDeathKnightStartLevel()
+{
+    return std::max<uint32>(sPlayerbotAIConfig.deathKnightStartLevel,
+                            sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
 }
 
 uint8 BotStartLocations::GetDonorRace(uint8 race)

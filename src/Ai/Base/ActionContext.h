@@ -15,6 +15,7 @@
 #include "BuyAction.h"
 #include "CancelChannelAction.h"
 #include "CastCustomSpellAction.h"
+#include "DCHeirloomUpgradeAction.h"  // DarkChaos
 #include "DCUpgradeItemsAction.h"  // DarkChaos
 #include "ChangeStrategyAction.h"
 #include "ChangeTalentsAction.h"
@@ -199,6 +200,7 @@ public:
         creators["craft random item"] = &ActionContext::craft_random_item;
         creators["smart destroy item"] = &ActionContext::smart_destroy_item;
         creators["dc upgrade items"] = &ActionContext::dc_upgrade_items;  // DarkChaos
+        creators["dc heirloom upgrade"] = &ActionContext::dc_heirloom_upgrade;  // DarkChaos
         creators["disenchant random item"] = &ActionContext::disenchant_random_item;
         creators["enchant random item"] = &ActionContext::enchant_random_item;
         creators["reset instances"] = &ActionContext::reset_instances;
@@ -408,6 +410,8 @@ private:
     static Action* smart_destroy_item(PlayerbotAI* botAI) { return new SmartDestroyItemAction(botAI); }
     // DarkChaos: spends the bot's DC item upgrade currency on its own gear.
     static Action* dc_upgrade_items(PlayerbotAI* botAI) { return new DCUpgradeItemsAction(botAI); }
+    // DarkChaos: levels the bot's heirlooms and picks their stat package.
+    static Action* dc_heirloom_upgrade(PlayerbotAI* botAI) { return new DCHeirloomUpgradeAction(botAI); }
     static Action* disenchant_random_item(PlayerbotAI* botAI) { return new DisEnchantRandomItemAction(botAI); }
     static Action* enchant_random_item(PlayerbotAI* botAI) { return new EnchantRandomItemAction(botAI); }
     static Action* reset_instances(PlayerbotAI* botAI) { return new ResetInstancesAction(botAI); }

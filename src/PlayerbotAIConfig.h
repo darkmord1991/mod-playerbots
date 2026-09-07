@@ -392,6 +392,15 @@ public:
     bool autoLearnTrainerSpells;
     bool autoDoQuests;
     bool enableNewRpgStrategy;
+
+    // Azshara Crater is a small custom leveling zone, so the number of bots on it is capped and
+    // they stay put until they outgrow it. See BotStartLocations::GetCraterStart().
+    uint32 azsharaCraterMaxBots;
+    uint32 azsharaCraterGraduationLevel;
+
+    // Level a bot death knight starts at when it is placed at Ebon Hold instead of the crater.
+    // See BotStartLocations::GetDeathKnightStartLevel().
+    uint32 deathKnightStartLevel;
     std::unordered_map<NewRpgStatus, uint32> RpgStatusProbWeight;
     bool syncLevelWithPlayers;
     bool autoLearnQuestSpells;

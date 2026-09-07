@@ -10,6 +10,7 @@
 #include "AiObjectContext.h"
 #include "ArenaTeam.h"
 #include "ArenaTeamMgr.h"
+#include "BotStartLocation.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
 #include "GuildMgr.h"
@@ -1437,8 +1438,15 @@ void PlayerbotFactory::ClearSkills()
 
 void PlayerbotFactory::ClearEverything()
 {
-    bot->GiveLevel(bot->getClass() == CLASS_DEATH_KNIGHT ? sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL)
-                                                         : sWorld->getIntConfig(CONFIG_START_PLAYER_LEVEL));
+    // A death knight away from the crater lives in the level 55-58 Scarlet Enclave, so it is reset
+    // to the ordinary death knight start level rather than the realm's crater-onboarding level 1.
+    uint32 const startLevel =
+        bot->getClass() != CLASS_DEATH_KNIGHT ? sWorld->getIntConfig(CONFIG_START_PLAYER_LEVEL)
+        : bot->GetMapId() == BotStartLocations::GetCraterStart().mapId
+            ? sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL)
+            : BotStartLocations::GetDeathKnightStartLevel();
+
+    bot->GiveLevel(startLevel);
     bot->SetUInt32Value(PLAYER_XP, 0);
     LOG_INFO("playerbots", "Resetting player...");
     bot->resetTalents(true);

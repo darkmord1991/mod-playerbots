@@ -520,6 +520,10 @@ void AddSC_IcecrownBotScripts();
 void AddSC_RubySanctumBotScripts();
 void AddSC_randombot_level_mgr();
 void AddSC_dc_groupfinder_bots();
+void AddSC_dc_bot_cosmetics();
+void AddSC_dc_bot_challenge_modes();
+void AddSC_dc_upgrade_items();
+void AddSC_dc_heirloom_upgrade();
 
 void AddPlayerbotsScripts()
 {
@@ -541,4 +545,8 @@ void AddPlayerbotsScripts()
     AddSC_RubySanctumBotScripts();
     AddSC_randombot_level_mgr();
     AddSC_dc_groupfinder_bots();
+    AddSC_dc_bot_cosmetics();
+    AddSC_dc_bot_challenge_modes();
+    AddSC_dc_upgrade_items();
+    AddSC_dc_heirloom_upgrade();
 }

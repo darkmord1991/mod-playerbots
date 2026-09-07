@@ -8,6 +8,7 @@
 #include "AiFactory.h"
 #include "Battleground.h"
 #include "BattlegroundMgr.h"
+#include "BotStartLocation.h"
 #include "Cell.h"
 #include "CellImpl.h"
 #include "ChannelMgr.h"
@@ -46,6 +47,58 @@
 #include <ctime>
 #include <iomanip>
 #include <random>
+
+namespace
+{
+    // Azshara Crater is a small custom leveling zone. Bots that have not outgrown it stay on it, and
+    // no more than the configured number may be teleported onto it at a time.
+    bool StaysInCrater(Player* bot)
+    {
+        return sPlayerbotAIConfig.azsharaCraterMaxBots > 0 &&
+               bot->GetMapId() == BotStartLocations::GetCraterStart().mapId &&
+               bot->GetLevel() < sPlayerbotAIConfig.azsharaCraterGraduationLevel;
+    }
+
+    // Lowest level a death knight bot may be randomized to.
+    //
+    // On the crater that is the realm's own heroic start level: a crater death knight levels
+    // through the onboarding hub like every other class. Anywhere else the bot lives at the Ebon
+    // Hold start in the middle of the level 55-58 Scarlet Enclave, so it gets the ordinary death
+    // knight start level instead of being rolled back down into a death loop.
+    uint32 DeathKnightLevelFloor(Player* bot)
+    {
+        if (bot->GetMapId() == BotStartLocations::GetCraterStart().mapId)
+            return sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL);
+
+        return BotStartLocations::GetDeathKnightStartLevel();
+    }
+
+    // Bots standing on the crater right now. The map holds at most the cap plus whatever real players
+    // are there, so walking its player list is far cheaper than scanning the whole bot roster.
+    uint32 CountCraterBots()
+    {
+        Map* map = sMapMgr->FindMap(BotStartLocations::GetCraterStart().mapId, 0);
+        if (!map)
+            return 0;
+
+        uint32 count = 0;
+        for (auto const& ref : map->GetPlayers())
+            if (Player* player = ref.GetSource())
+                if (GET_PLAYERBOT_AI(player))
+                    ++count;
+
+        return count;
+    }
+
+    // Whether this bot may be sent to the crater at all. A bot already on it never needs a new slot.
+    bool CraterAcceptsBot(Player* bot)
+    {
+        if (bot->GetMapId() == BotStartLocations::GetCraterStart().mapId)
+            return true;
+
+        return CountCraterBots() < sPlayerbotAIConfig.azsharaCraterMaxBots;
+    }
+}
 
 struct GuidClassRaceInfo
 {
@@ -1615,10 +1668,20 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
     std::vector<WorldPosition> tlocs;
     for (auto& loc : locs)
         tlocs.push_back(WorldPosition(loc));
+    // A bot that has not outgrown the crater never leaves it; one that has is free to go anywhere,
+    // and may come back only while the crater is under its cap.
+    uint32 const craterMapId = BotStartLocations::GetCraterStart().mapId;
+    bool const stayInCrater = StaysInCrater(bot);
+    bool const craterOpen = stayInCrater || CraterAcceptsBot(bot);
+
     // Do not teleport to maps disabled in config
     tlocs.erase(std::remove_if(tlocs.begin(), tlocs.end(),
-                               [](WorldPosition l)
+                               [craterMapId, stayInCrater, craterOpen](WorldPosition l)
                                {
+                                   bool const isCrater = l.GetMapId() == craterMapId;
+                                   if (isCrater ? !craterOpen : stayInCrater)
+                                       return true;
+
                                    std::vector<uint32>::iterator i =
                                        find(sPlayerbotAIConfig.randomBotMaps.begin(),
                                             sPlayerbotAIConfig.randomBotMaps.end(), l.GetMapId());
@@ -1783,7 +1846,9 @@ void RandomPlayerbotMgr::RandomTeleportForLevel(Player* bot)
     if (bot->InBattleground())
         return;
 
-    if (bot->GetLevel() >= 10 && urand(0, 100) < sPlayerbotAIConfig.probTeleToBankers * 100)
+    // A crater bot has no banker to visit, and must not be pulled off the map to find one.
+    if (bot->GetLevel() >= 10 && !StaysInCrater(bot) &&
+        urand(0, 100) < sPlayerbotAIConfig.probTeleToBankers * 100)
     {
         std::vector<WorldLocation> locs = sTravelMgr.GetCityLocations(bot);
         if (!locs.empty())
@@ -1912,10 +1977,11 @@ void RandomPlayerbotMgr::RandomizeFirst(Player* bot)
                             std::min(playersLevel, sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
 
     uint32 minLevel = sPlayerbotAIConfig.randomBotMinLevel;
+    uint32 const dkFloor = DeathKnightLevelFloor(bot);
     if (bot->getClass() == CLASS_DEATH_KNIGHT)
     {
-        maxLevel = std::max(maxLevel, sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
-        minLevel = std::max(minLevel, sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
+        maxLevel = std::max(maxLevel, dkFloor);
+        minLevel = std::max(minLevel, dkFloor);
     }
 
     PerfMonitorOperation* pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "RandomizeFirst");
@@ -1926,7 +1992,7 @@ void RandomPlayerbotMgr::RandomizeFirst(Player* bot)
     {
         if (bot->getClass() == CLASS_DEATH_KNIGHT)
         {
-            level = sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL);
+            level = dkFloor;
         }
         else
         {
@@ -1953,9 +2019,9 @@ void RandomPlayerbotMgr::RandomizeFirst(Player* bot)
 
     if (sPlayerbotAIConfig.disableRandomLevels)
     {
-        level = bot->getClass() == CLASS_DEATH_KNIGHT ? std::max(sPlayerbotAIConfig.randombotStartingLevel,
-                                                                 sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL))
-                                                      : sPlayerbotAIConfig.randombotStartingLevel;
+        level = bot->getClass() == CLASS_DEATH_KNIGHT
+                    ? std::max(sPlayerbotAIConfig.randombotStartingLevel, dkFloor)
+                    : sPlayerbotAIConfig.randombotStartingLevel;
     }
 
     SetValue(bot, "level", level);
@@ -1999,6 +2065,9 @@ void RandomPlayerbotMgr::RandomizeMin(Player* bot)
 
     PerfMonitorOperation* pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "RandomizeMin");
     uint32 level = sPlayerbotAIConfig.randomBotMinLevel;
+    if (bot->getClass() == CLASS_DEATH_KNIGHT)
+        level = std::max(level, DeathKnightLevelFloor(bot));
+
     SetValue(bot, "level", level);
     PlayerbotFactory factory(bot, level);
     factory.Randomize(false);
@@ -3059,6 +3128,25 @@ void RandomPlayerbotMgr::Remove(Player* bot)
     eventCache.erase(botId);
 
     LogoutPlayerBot(owner);
+}
+
+// DarkChaos: take a character out of the rotation without kicking it.
+//
+// KickPlayer() is useless on a bot - the session has no socket and is not owned
+// by WorldSessionMgr, so the kick flag is never read. This is the supported
+// route instead: clearing "add" makes ProcessBot() log the bot out on its next
+// tick (safely, outside the login path), and the "logout" event is the one
+// thing tryLoginBot() checks that keeps AddRandomBots() from picking the
+// character up again.
+//
+// forSeconds is a long lease rather than a permanent flag: if it ever lapses the
+// caller sees the bot log in once more and simply retires it again.
+void RandomPlayerbotMgr::RetireBot(ObjectGuid guid, uint32 forSeconds)
+{
+    uint32 bot = guid.GetCounter();
+
+    SetEventValue(bot, "logout", 1, forSeconds);
+    SetEventValue(bot, "add", 0, 0);
 }
 
 CreatureData const* RandomPlayerbotMgr::GetCreatureDataByEntry(uint32 entry)

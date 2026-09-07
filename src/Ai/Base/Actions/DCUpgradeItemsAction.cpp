@@ -9,6 +9,7 @@
 #include "Event.h"
 #include "Player.h"
 #include "Playerbots.h"
+#include "ScriptMgr.h"
 
 #include <algorithm>
 #include <vector>
@@ -17,45 +18,44 @@ namespace
 {
     namespace Api = DarkChaos::ItemUpgradeApi;
 
-    // Bot-side policy. Read per call rather than cached in PlayerbotAIConfig so
-    // the DC options stay out of an upstream file and .reload config takes.
-    uint32 MaxStepsPerRun()
+    // Bot-side policy. Kept out of PlayerbotAIConfig so the DC options stay out
+    // of an upstream file, but cached rather than read per call: isUseful() runs
+    // for every bot on every AI tick, and a string-keyed config lookup per knob
+    // per tick across a full roster is not free. DCUpgradeItemsWorldScript
+    // refreshes this below, so ".reload config" still takes without a restart.
+    // The initialisers are the defaults, so the cache is already correct if
+    // anything manages to run before the first config load.
+    struct BotUpgradeConfig
     {
-        return sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.StepsPerRun", 3);
-    }
+        bool   enabled         = true;
+        uint32 maxStepsPerRun  = 3;
+        uint32 minLevel        = 10;
+        // Percentage of each tier's max upgrade level a bot will climb to. Lets
+        // an admin keep bots a step behind players without switching the system
+        // off. Clamped to 100 on load.
+        uint32 maxLevelPercent = 100;
+        // Seconds a bot must wait between runs, on top of the trigger's own rarity.
+        uint32 cooldownSeconds = 3600;
+        uint32 currencyReserve = 0;
+    };
 
-    uint32 MinLevel()
-    {
-        return sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.MinLevel", 10);
-    }
+    BotUpgradeConfig s_cfg;
 
-    // Percentage of each tier's max upgrade level a bot will climb to. Lets an
-    // admin keep bots a step behind players without switching the system off.
-    uint32 MaxLevelPercent()
+    void LoadConfig()
     {
-        uint32 const percent = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.MaxLevelPercent", 100);
-        return std::min<uint32>(percent, 100);
-    }
+        s_cfg.enabled         = sConfigMgr->GetOption<bool>("AiPlayerbot.DCItemUpgrade.Enable", true);
+        s_cfg.maxStepsPerRun  = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.StepsPerRun", 3);
+        s_cfg.minLevel        = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.MinLevel", 10);
+        s_cfg.cooldownSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.CooldownSeconds", 3600);
+        s_cfg.currencyReserve = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.CurrencyReserve", 0);
 
-    // Seconds a bot must wait between runs, on top of the trigger's own rarity.
-    uint32 CooldownSeconds()
-    {
-        return sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.CooldownSeconds", 3600);
-    }
-
-    uint32 CurrencyReserve()
-    {
-        return sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.CurrencyReserve", 0);
-    }
-
-    bool IsEnabled()
-    {
-        return sConfigMgr->GetOption<bool>("AiPlayerbot.DCItemUpgrade.Enable", true);
+        s_cfg.maxLevelPercent =
+            std::min<uint32>(sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.MaxLevelPercent", 100), 100);
     }
 
     uint8 EffectiveMaxLevel(uint8 tierMaxLevel)
     {
-        uint32 const percent = MaxLevelPercent();
+        uint32 const percent = s_cfg.maxLevelPercent;
         if (!tierMaxLevel || percent >= 100)
             return tierMaxLevel;
 
@@ -66,7 +66,7 @@ namespace
     // What is left of a balance once the configured reserve is set aside.
     uint32 Spendable(Api::Provider* provider, Player* bot, Api::Currency currency)
     {
-        uint32 const reserve = CurrencyReserve();
+        uint32 const reserve = s_cfg.currencyReserve;
         uint32 const balance = provider->GetCurrencyAmount(bot, currency);
         return balance > reserve ? balance - reserve : 0;
     }
@@ -74,18 +74,18 @@ namespace
 
 bool DCUpgradeItemsAction::isUseful()
 {
-    if (!IsEnabled() || !Api::GetProvider())
+    if (!s_cfg.enabled || !Api::GetProvider())
         return false;
 
     if (!bot || !bot->IsInWorld() || !bot->IsAlive() || bot->IsInCombat())
         return false;
 
-    if (bot->GetLevel() < MinLevel())
+    if (bot->GetLevel() < s_cfg.minLevel)
         return false;
 
     // Unsigned arithmetic, so a getMSTime() wrap resolves the same way it does
     // for RandomTrigger::IsActive. _lastRunMs == 0 means "never ran".
-    if (_lastRunMs && (getMSTime() - _lastRunMs) < CooldownSeconds() * IN_MILLISECONDS)
+    if (_lastRunMs && (getMSTime() - _lastRunMs) < s_cfg.cooldownSeconds * IN_MILLISECONDS)
         return false;
 
     // Cheap gate: no currency at all means nothing to do this pass. The per-tier
@@ -142,7 +142,7 @@ bool DCUpgradeItemsAction::Execute(Event /*event*/)
     if (candidates.empty())
         return !cold.empty();
 
-    uint32 const maxSteps = MaxStepsPerRun();
+    uint32 const maxSteps = s_cfg.maxStepsPerRun;
     uint32 bought = 0;
 
     // Cheapest step first, so the spend spreads across slots instead of sinking
@@ -194,4 +194,25 @@ bool DCUpgradeItemsAction::Execute(Event /*event*/)
     }
 
     return bought > 0;
+}
+
+namespace
+{
+    // Refreshes the cache above on startup and on ".reload config".
+    class DCUpgradeItemsWorldScript : public WorldScript
+    {
+    public:
+        DCUpgradeItemsWorldScript()
+            : WorldScript("DCUpgradeItemsWorldScript", { WORLDHOOK_ON_AFTER_CONFIG_LOAD }) {}
+
+        void OnAfterConfigLoad(bool /*reload*/) override
+        {
+            LoadConfig();
+        }
+    };
+}
+
+void AddSC_dc_upgrade_items()
+{
+    new DCUpgradeItemsWorldScript();
 }

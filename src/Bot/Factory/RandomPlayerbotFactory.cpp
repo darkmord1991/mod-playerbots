@@ -23,7 +23,73 @@
 #include "ScriptMgr.h"
 #include "SharedDefines.h"
 #include "SocialMgr.h"
+#include "StringFormat.h"
 #include "Timer.h"
+
+namespace
+{
+    // How many bot characters are currently parked on Azshara Crater. Seeded from the database once
+    // per CreateRandomBots() run and then kept in step as new bots are handed the crater start, so
+    // the cap survives a restart. Bots that graduated and moved off the crater free their slot, which
+    // is what lets the roster refill itself over time.
+    uint32 craterStartsTaken = 0;
+
+    void SeedCraterStartCount()
+    {
+        craterStartsTaken = 0;
+        if (!sPlayerbotAIConfig.azsharaCraterMaxBots)
+            return;
+
+        std::string prefix = sPlayerbotAIConfig.randomBotAccountPrefix;
+        CharacterDatabase.EscapeString(prefix);
+
+        std::string const sql = Acore::StringFormat(
+            "SELECT COUNT(*) FROM characters WHERE map = {} AND account IN "
+            "(SELECT id FROM {}.account WHERE username LIKE '{}%')",
+            BotStartLocations::GetCraterStart().mapId, LoginDatabase.GetConnectionInfo()->database, prefix);
+
+        if (QueryResult result = CharacterDatabase.Query(sql))
+            craterStartsTaken = uint32((*result)[0].Get<uint64>());
+
+        LOG_INFO("playerbots", "{} of {} Azshara Crater bot slots are already taken.", craterStartsTaken,
+                 sPlayerbotAIConfig.azsharaCraterMaxBots);
+    }
+
+    // Take a crater slot for a bot about to be created, or report that the crater is full.
+    bool ClaimCraterStartSlot()
+    {
+        if (craterStartsTaken >= sPlayerbotAIConfig.azsharaCraterMaxBots)
+            return false;
+
+        ++craterStartsTaken;
+        return true;
+    }
+
+    // Raise a bot that Player::Create() just made up to `level`, repeating the level-dependent
+    // init that Create() runs so stats, talents, glyphs, taxi nodes and skill caps match.
+    //
+    // GiveLevel() is the usual way to do this but is not safe here: the bot has not entered the
+    // world yet, and that path sends a level-up packet, fires OnPlayerLevelChanged and can post
+    // MailLevelReward mail for a character that has not been saved once.
+    void RaiseCreationLevel(Player* player, uint8 level)
+    {
+        if (player->GetLevel() >= level)
+            return;
+
+        player->SetUInt32Value(UNIT_FIELD_LEVEL, level);
+        player->SetUInt32Value(PLAYER_NEXT_LEVEL_XP, sObjectMgr->GetXPForLevel(level));
+        player->SetUInt32Value(PLAYER_XP, 0);
+
+        player->InitStatsForLevel();
+        player->InitTaxiNodesForLevel();
+        player->InitGlyphsForLevel();
+        player->InitTalentForLevel();
+        player->UpdateSkillsForLevel();
+
+        player->SetFullHealth();
+        player->SetPower(POWER_MANA, player->GetMaxPower(POWER_MANA));
+    }
+}
 
 constexpr RandomPlayerbotFactory::NameRaceAndGender RandomPlayerbotFactory::CombineRaceAndGender(uint8 race,
                                                                                                 uint8 gender)
@@ -184,8 +250,19 @@ Player* RandomPlayerbotFactory::CreateRandomBot(WorldSession* session, uint8 cls
     }
 
     // Player::Create() placed the bot using `playercreateinfo`, which on this realm is the
-    // onboarding hub for every race. Move it to the stock start for its race instead.
-    if (BotStartLocation const* start = BotStartLocations::Get(race, cls))
+    // onboarding hub for every race. Move it to the stock start for its race instead -- unless this
+    // bot took one of the capped Azshara Crater slots, in which case the hub is where it belongs.
+    bool const startsOnCrater = ClaimCraterStartSlot();
+    BotStartLocation const* start = startsOnCrater ? &BotStartLocations::GetCraterStart()
+                                                   : BotStartLocations::Get(race, cls);
+
+    // Player::Create() also took the level from StartHeroicPlayerLevel, which this realm sets to 1
+    // for the crater onboarding. A death knight that is not going to the crater is about to be put
+    // down in the Scarlet Enclave instead, so give it the ordinary death knight start level.
+    if (cls == CLASS_DEATH_KNIGHT && !startsOnCrater)
+        RaiseCreationLevel(player, uint8(BotStartLocations::GetDeathKnightStartLevel()));
+
+    if (start)
     {
         player->Relocate(start->x, start->y, start->z, start->o);
 
@@ -689,6 +766,9 @@ void RandomPlayerbotFactory::CreateRandomBots()
     int bot_creation = 0;
     timer = getMSTime();
     bool nameCached = false;
+
+    SeedCraterStartCount();
+
     for (uint32 accountNumber = 0; accountNumber < totalAccountCount; ++accountNumber)
     {
         std::ostringstream out;

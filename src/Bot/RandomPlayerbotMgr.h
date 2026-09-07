@@ -145,6 +145,9 @@ public:
     void SetValue(Player* bot, std::string const& type, uint32 value, std::string const& data = "");
     bool IsSpecPvp(uint32 bot, uint8 cls);
     void Remove(Player* bot);
+    // DarkChaos: retire a character from the random bot rotation. Used when a
+    // bot can no longer legitimately play - a hardcore challenge mode death.
+    void RetireBot(ObjectGuid guid, uint32 forSeconds);
     ObjectGuid GetBattleMasterGUID(Player* bot, BattlegroundTypeId bgTypeId);
     CreatureData const* GetCreatureDataByEntry(uint32 entry);
     void LoadBattleMastersCache();

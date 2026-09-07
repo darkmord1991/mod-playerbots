@@ -1563,6 +1563,10 @@ AiPlayerbot.ZoneBracket.3537 = 68,75
 AiPlayerbot.ZoneBracket.3711 = 75,80
 AiPlayerbot.ZoneBracket.4197 = 79,80
 
+# DarkChaos - custom leveling zones:
+# Azshara Crater         (Zone ID:  268    Default Min,Max:  1,80)
+AiPlayerbot.ZoneBracket.268 = 1,80
+
 #
 #
 ####################################################################################################
@@ -1573,7 +1577,37 @@ AiPlayerbot.ZoneBracket.4197 = 79,80
 
 # Map IDs where bots can be teleported to
 # Defaults: 0 = Eastern Kingdoms, 1 = Kalimdor, 530 = Outland, 571 = Northrend
-AiPlayerbot.RandomBotMaps = 0,1,530,571
+# DarkChaos: 37 = Azshara Crater (needs a matching AiPlayerbot.ZoneBracket entry for its zone)
+AiPlayerbot.RandomBotMaps = 0,1,530,571,37
+
+# Azshara Crater (map 37) is a small custom leveling zone, so the bot population on it is capped.
+#
+# AzsharaCraterMaxBots is used twice: at most this many bots are created with the crater hub as
+# their start location, and at most this many bots may be teleported onto map 37 at a time. Bots
+# that graduate and move off the crater free their slot, so the roster refills itself.
+# 0 keeps bots off the crater entirely; to disable the feature, drop 37 from AiPlayerbot.RandomBotMaps.
+# Default: 100
+AiPlayerbot.AzsharaCraterMaxBots = 100
+
+# Level at which a crater bot is released. Below it a bot is never teleported off map 37; at or
+# above it the bot roams like any other. Matches the crater's own 1-80 zone bracket.
+# Default: 80
+AiPlayerbot.AzsharaCraterGraduationLevel = 80
+
+# Level a death knight bot starts at when it is NOT given a crater slot.
+#
+# This realm sets StartHeroicPlayerLevel = 1 so that a player's death knight begins on the Azshara
+# Crater onboarding hub alongside every other class. Bots that miss the capped crater slots are put
+# at the stock Ebon Hold start instead, and the Scarlet Enclave around it holds level 55-58 mobs --
+# a level 1 bot dropped there dies on sight and keeps dying for as long as it stays logged in.
+# Those bots spawn as ordinary death knights at this level.
+#
+# Death knight bots that DO take a crater slot are unaffected and still start at
+# StartHeroicPlayerLevel, levelling through the hub like any other class.
+#
+# Never applied below StartHeroicPlayerLevel: raising that config raises these bots with it.
+# Default: 55 (the stock 3.3.5a death knight start level)
+AiPlayerbot.DeathKnightStartLevel = 55
 
 # Probability bots teleport to banker (city)
 # Default: 0.25
@@ -2768,3 +2802,185 @@ AiPlayerbot.DCItemUpgrade.MaxLevelPercent = 100
 
 # Amount of each currency a bot keeps unspent.
 AiPlayerbot.DCItemUpgrade.CurrencyReserve = 0
+
+###############################################################################
+# DARK CHAOS - BOT COSMETICS
+#
+# Purely visual variety for bots: mounts drawn from the whole DC mount catalog,
+# non-combat companions, and re-skinned warlock minions / hunter pets. Nothing
+# here changes bot stats, spells or behaviour.
+#
+# Every pick is derived from the bot's character GUID, so a bot keeps the same
+# mounts, companion and pet skin across logins and server restarts. The only DB
+# write is the mount spells themselves - a bot has to know a mount for the mount
+# AI to consider it.
+#
+# Shapeshift forms are handled core-side by DC.AddonProtocol.Forms.BotSkins in
+# darkchaos-custom.conf: that catalog lives in scripts.lib, which this module
+# cannot link against.
+#
+# `.reload config` re-reads these keys AND rebuilds the pools, so catalog edits
+# do not need a restart.
+###############################################################################
+
+# Master switch for the whole feature.
+AiPlayerbot.DCCosmetics.Enable = 1
+
+# Teach bots mounts from acore_world.dc_mount_definitions (1526 entries) instead
+# of leaving them on the hardcoded racial mounts in PlayerbotFactory::InitMounts.
+AiPlayerbot.DCCosmetics.Mounts.Enable = 1
+
+# How many mounts a bot learns per speed tier (slow ground, fast ground, slow
+# fly, fast fly). A tier is only granted once the bot reaches the level the
+# AiPlayerbot.Use*MountAtMinLevel keys above already require. Capped at 10.
+AiPlayerbot.DCCosmetics.Mounts.PerTier = 3
+
+# Optional ceiling on the mount spell ids bots may learn. DC retroported mounts
+# live in the 300000+ band, so 299999 keeps bots on stock 3.3.5 mounts while
+# players keep the custom ones. 0 = no limit.
+AiPlayerbot.DCCosmetics.Mounts.MaxSpellId = 0
+
+# Let bots summon a non-combat pet from acore_world.dc_pet_definitions.
+AiPlayerbot.DCCosmetics.Companions.Enable = 1
+
+# Percentage of bots that carry a companion at all.
+AiPlayerbot.DCCosmetics.Companions.Chance = 35
+
+# Re-skin bot warlock minions from acore_playerbots.playerbots_demon_skins and
+# bot hunter pets from the curated acore_world.dc_beastmaster_pets roster.
+# Display only - the pet keeps its own entry, family, stats and abilities.
+AiPlayerbot.DCCosmetics.PetSkins.Enable = 1
+
+# Percentage of hunter bots whose pet gets re-skinned. Below 100 some bots keep
+# the plain model of whatever they tamed.
+AiPlayerbot.DCCosmetics.PetSkins.HunterChance = 70
+
+# Models larger than this (CreatureDisplayInfo scale) are counter-scaled back
+# down, so a downported boss-sized demon does not tower over its owner.
+AiPlayerbot.DCCosmetics.PetSkins.MaxScale = 1.6
+
+###############################################################################
+# DARK CHAOS - BOT CHALLENGE MODES
+#
+# Lets a share of the random bot population take on the same challenge modes
+# players get from the shrine (Hardcore, Slow XP, Item Quality Restricted, ...),
+# so the bots you meet carry the same challenge auras real players do.
+#
+# It is a chance, not a rule. The roll is derived from the bot's character GUID,
+# so a bot's fate is fixed for its whole life: one that rolls "no challenge"
+# never re-rolls on a later login, and one that rolls a mode gets exactly that
+# mode, exactly once. Nothing is stored per bot.
+#
+# Only *random* bots are touched. A character added with `.bot add <name>` is a
+# real player's alt, and a challenge mode can never be switched off again.
+#
+# The modes themselves are still governed by darkchaos-custom.conf
+# (ChallengeModes.Enable, Hardcore.Enable, SlowXpGain.DisableLevel, ...). A mode
+# disabled there is never handed to a bot no matter what is listed below.
+###############################################################################
+
+# Master switch for the whole feature.
+AiPlayerbot.DCChallengeModes.Enable = 1
+
+# Percentage of random bots that carry a challenge mode at all. 0 disables the
+# feature as surely as Enable = 0.
+AiPlayerbot.DCChallengeModes.Chance = 15
+
+# Which modes a bot may roll, comma separated. Names are case-insensitive and
+# ignore spaces, underscores and dashes:
+#
+#   Hardcore ....... permadeath. Works, but only because RetireDeceased below
+#                    supplies the lockout the challenge system cannot: its own
+#                    enforcement kicks the session at login, and that is a no-op
+#                    on a socketless bot session. Each hardcore bot death fires a
+#                    server-wide announcement and drops a death marker on the
+#                    map, so a large hardcore share is loud by design. The
+#                    character is then gone for good - with 12k bot characters
+#                    against a 1000 cap the roster absorbs that easily, but it is
+#                    one-way.
+#   SemiHardcore ... destroys all equipped items and gold on death. Bots die
+#                    often, so they end up naked and stay that way.
+#   SelfCrafted .... may only equip self-crafted items. Bots cannot craft their
+#                    own gear, so this effectively strips them.
+#   ItemQuality .... white and grey gear only. Safe: the bot just runs poor.
+#   SlowXp ......... 50% experience. Safe.
+#   VerySlowXp ..... 25% experience. Safe.
+#   QuestXpOnly .... experience from quests only. Safe.
+#   IronMan ........ no deaths, no auction house, no trading, and it implies the
+#                    SelfCrafted and ItemQuality restrictions.
+#   IronManPlus .... IronMan plus no talents, glyphs, grouping or dungeons. A
+#                    bot under this can never be group-finder backfill.
+#
+# Hardcore is in the default list, so roughly Chance/5 of bots run it - loud but
+# self-cleaning, provided RetireDeceased below stays on. Drop it from the list to
+# go back to the four modes that only change a bot's numbers.
+AiPlayerbot.DCChallengeModes.Modes = "Hardcore,ItemQuality,SlowXp,VerySlowXp,QuestXpOnly"
+
+# Chance (percent) that a bot which already rolled one mode also picks up a
+# second from the same list - the combination aura the challenge system shows
+# for stacked modes. 0 keeps every challenged bot on exactly one mode, matching
+# what the shrine hands out to players.
+AiPlayerbot.DCChallengeModes.SecondModeChance = 0
+
+# Bots below this level are left alone; they are re-checked as they level up.
+AiPlayerbot.DCChallengeModes.MinLevel = 10
+
+# Retire a bot that died in Hardcore mode, taking it out of the random bot
+# rotation for good.
+#
+# This is what makes Hardcore mean anything for a bot. The challenge system
+# enforces permadeath by kicking the session at login, which does nothing to a
+# bot: the session has no socket and WorldSessionMgr does not own it, so the
+# kick flag is never read. Without this, a dead hardcore bot would announce its
+# own death, get a permanent lock row, and then keep playing forever.
+#
+# Retirement is done the module's own way - the bot's "add" event is cleared so
+# ProcessBot logs it out on its next tick, and a long "logout" lease keeps
+# AddRandomBots from selecting the character again. Nothing is kicked and
+# nothing is deleted; the character simply stops being picked.
+#
+# Only matters if Hardcore is in the Modes list above. Harmless to leave on.
+AiPlayerbot.DCChallengeModes.RetireDeceased = 1
+
+###############################################################################
+# DARKCHAOS: HEIRLOOM UPGRADES
+#
+# The heirloom half of the DC upgrade system, driven by the "dc heirloom
+# upgrade" action on the same "dc upgrade" strategy. Heirlooms are the artifact
+# tiers the ordinary upgrade path refuses: priced from dc_heirloom_upgrade_costs
+# (essence, mostly -- 50 at level 1 rising to 2050 at 15), and instead of a stat
+# multiplier they carry a stat-package enchant.
+#
+# The bot picks one of the twelve packages from its own role:
+#   tank -> 8 Fortress   healer/caster -> 5 Spellfire
+#   physical dps -> 3 Devastation      otherwise -> 12 Balanced
+###############################################################################
+
+# Master switch for bot-side heirloom upgrading.
+AiPlayerbot.DCHeirloom.Enable = 1
+
+# Give a bot the starter heirloom if it has none.
+#
+# Needed for any of this to do anything: the starter heirloom (item 300365,
+# "Heirloom Adventurer's Shirt") is only obtainable from onboarding quest 820058,
+# which playerbots never run -- so without this no bot will ever own one and the
+# action has nothing to work on. Set 0 if you would rather bots only upgrade
+# heirlooms they somehow acquired on their own.
+AiPlayerbot.DCHeirloom.GrantStarter = 1
+
+# Heirloom upgrade steps started per run of the action.
+AiPlayerbot.DCHeirloom.StepsPerRun = 2
+
+# Bots below this level are left alone.
+AiPlayerbot.DCHeirloom.MinLevel = 10
+
+# Seconds a bot must wait between runs. As with the item-upgrade action, the
+# world thread sees roughly (online bots / this value) runs per second.
+AiPlayerbot.DCHeirloom.CooldownSeconds = 3600
+
+# Force every bot onto one stat package (1-12) instead of choosing by role.
+# 0 = choose by role.
+#   1 Fury        2 Precision   3 Devastation  4 Swiftblade
+#   5 Spellfire   6 Arcane      7 Bulwark      8 Fortress
+#   9 Survivor   10 Gladiator  11 Warlord     12 Balanced
+AiPlayerbot.DCHeirloom.ForcePackage = 0

@@ -34,6 +34,24 @@ namespace BotStartLocations
     // Race whose start position `race` borrows. Stock races map to themselves; the
     // DarkChaos-only races map onto a faction-appropriate stock race. Returns 0 if unmapped.
     uint8 GetDonorRace(uint8 race);
+
+    // The DarkChaos onboarding hub on Azshara Crater -- the position `playercreateinfo` gives every
+    // race. Unlike the stock starts this one is handed out to only a limited number of bots, because
+    // the crater is a small zone: see AiPlayerbot.AzsharaCraterMaxBots.
+    BotStartLocation const& GetCraterStart();
+
+    // Level a death knight bot starts at when it is placed at the Ebon Hold start above rather than
+    // on the crater.
+    //
+    // The realm sets StartHeroicPlayerLevel to 1 so a player's death knight begins on the onboarding
+    // hub alongside every other class. That is fine on the crater, but the Ebon Hold start sits in
+    // the Scarlet Enclave, whose mobs are level 55-58 -- a level 1 bot dropped there dies on sight,
+    // revives at its corpse and dies again for as long as it stays logged in. Bots that start there
+    // get the stock death knight level instead, so they spawn as ordinary death knights.
+    //
+    // Never below the realm's own heroic start level: raising StartHeroicPlayerLevel past this
+    // setting should raise bots with it.
+    uint32 GetDeathKnightStartLevel();
 }
 
 #endif
