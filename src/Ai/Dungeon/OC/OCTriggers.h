@@ -68,6 +68,23 @@ const std::vector<uint32> DRAKE_ITEMS = {ITEM_AMBER_ESSENCE, ITEM_EMERALD_ESSENC
 const std::vector<uint32> DRAKE_SPELLS = {SPELL_AMBER_ESSENCE, SPELL_EMERALD_ESSENCE, SPELL_RUBY_ESSENCE};
 const uint32 OCULUS_MAP_ID = 578;
 
+// The entrance ring and Drakos' platform are separated by open air: the only way
+// across on foot is the Nexus Portal (spellcaster GO casting 49305, "Teleport to
+// Boss 1 DND", which drops the user at 983.1 1054.5 359.97). Nothing in the shared
+// bot code follows a master through a teleporter game object, so without this the
+// group is left standing on the ring while the master ports to the boss.
+const uint32 GO_NEXUS_PORTAL = 189985;
+const Position OCULUS_NEXUS_PORTAL_POSITION = Position(1045.57f, 1104.24f, 361.07f);
+const Position OCULUS_PLATFORM_CENTER = Position(961.29f, 1049.0f, 360.0f);
+// Platform is ~45yd across, the ring sits >100yd out from its centre.
+const float OCULUS_PLATFORM_RADIUS = 60.0f;
+
+inline bool IsOnOculusPlatform(WorldObject const* who)
+{
+    return who->GetExactDist2d(OCULUS_PLATFORM_CENTER.GetPositionX(), OCULUS_PLATFORM_CENTER.GetPositionY()) <
+           OCULUS_PLATFORM_RADIUS;
+}
+
 // const float uromCoords[4][4] =
 // {
 //     {1177.47f, 937.722f, 527.405f, 2.21657f},
@@ -80,6 +97,13 @@ class DrakosUnstableSphereTrigger : public Trigger
 {
 public:
     DrakosUnstableSphereTrigger(PlayerbotAI* ai) : Trigger(ai, "drakos unstable sphere") {}
+    bool IsActive() override;
+};
+
+class OculusPortalTrigger : public Trigger
+{
+public:
+    OculusPortalTrigger(PlayerbotAI* ai) : Trigger(ai, "oculus portal") {}
     bool IsActive() override;
 };
 

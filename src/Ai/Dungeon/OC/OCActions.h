@@ -27,6 +27,13 @@ public:
     bool Execute(Event event) override;
 };
 
+class OculusUsePortalAction : public MovementAction
+{
+public:
+    OculusUsePortalAction(PlayerbotAI* ai) : MovementAction(ai, "use oculus portal") {}
+    bool Execute(Event event) override;
+};
+
 class MountDrakeAction : public UseItemAction
 {
 public:

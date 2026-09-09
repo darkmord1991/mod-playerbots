@@ -29,6 +29,24 @@ bool DrakosUnstableSphereTrigger::IsActive()
     return false;
 }
 
+bool OculusPortalTrigger::IsActive()
+{
+    if (bot->GetMapId() != OCULUS_MAP_ID)
+        return false;
+
+    // On a drake the bot flies to the master instead of walking to the portal.
+    if (bot->GetVehicle())
+        return false;
+
+    Player* master = botAI->GetMaster();
+    if (!master || master->GetMapId() != OCULUS_MAP_ID)
+        return false;
+
+    // Master (or the drake carrying him) already crossed over, bot has not.
+    WorldObject const* masterAnchor = master->GetVehicleBase() ? master->GetVehicleBase() : master;
+    return IsOnOculusPlatform(masterAnchor) && !IsOnOculusPlatform(bot);
+}
+
 bool DrakeMountTrigger::IsActive()
 {
     Player* master = botAI->GetMaster();

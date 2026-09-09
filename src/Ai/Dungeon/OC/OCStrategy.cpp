@@ -14,6 +14,11 @@ void WotlkDungeonOccStrategy::InitTriggers(std::vector<TriggerNode*> &triggers)
     triggers.push_back(new TriggerNode("unstable sphere",
         { NextAction("avoid unstable sphere", ACTION_MOVE + 5) }));
 
+    // Crossing to Drakos' platform - the entrance ring is only linked to it by
+    // the Nexus Portal, which every player has to click for themselves.
+    triggers.push_back(new TriggerNode("oculus portal",
+        { NextAction("use oculus portal", ACTION_MOVE + 6) }));
+
     // DRAKES
     triggers.push_back(new TriggerNode("drake mount",
         { NextAction("mount drake", ACTION_RAID + 5) }));

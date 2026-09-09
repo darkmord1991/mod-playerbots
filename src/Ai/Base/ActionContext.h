@@ -16,6 +16,7 @@
 #include "CancelChannelAction.h"
 #include "CastCustomSpellAction.h"
 #include "DCHeirloomUpgradeAction.h"  // DarkChaos
+#include "DCHinterlandTactics.h"  // DarkChaos
 #include "DCUpgradeItemsAction.h"  // DarkChaos
 #include "ChangeStrategyAction.h"
 #include "ChangeTalentsAction.h"
@@ -229,6 +230,9 @@ public:
         creators["bg attack fc"] = &ActionContext::bg_attack_fc;
         creators["bg protect fc"] = &ActionContext::bg_protect_fc;
         creators["bg use buff"] = &ActionContext::bg_use_buff;
+        // DarkChaos: Hinterland BG roaming, see DCHinterlandTactics.h
+        creators["dc hinterland tactics"] = &ActionContext::dc_hinterland_tactics;
+        creators["dc hinterland reset objective"] = &ActionContext::dc_hinterland_reset_objective;
         creators["attack enemy flag carrier"] = &ActionContext::attack_enemy_fc;
         creators["bg check flag"] = &ActionContext::bg_check_flag;
 
@@ -431,6 +435,12 @@ private:
 
     // BG Tactics
     static Action* bg_tactics(PlayerbotAI* botAI) { return new BGTactics(botAI); }
+    // DarkChaos: Hinterland BG (type 20) roaming, see DCHinterlandTactics.h
+    static Action* dc_hinterland_tactics(PlayerbotAI* botAI) { return new DCHinterlandTacticsAction(botAI); }
+    static Action* dc_hinterland_reset_objective(PlayerbotAI* botAI)
+    {
+        return new DCHinterlandResetObjectiveAction(botAI);
+    }
     static Action* bg_move_to_start(PlayerbotAI* botAI) { return new BGTactics(botAI, "move to start"); }
     static Action* bg_reset_objective_force(PlayerbotAI* botAI) { return new BGTactics(botAI, "reset objective force"); }
     static Action* bg_move_to_objective(PlayerbotAI* botAI) { return new BGTactics(botAI, "move to objective"); }

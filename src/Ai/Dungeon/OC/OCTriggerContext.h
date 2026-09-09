@@ -16,6 +16,7 @@ class WotlkDungeonOccTriggerContext : public NamedObjectContext<Trigger>
         WotlkDungeonOccTriggerContext()
         {
             creators["unstable sphere"] = &WotlkDungeonOccTriggerContext::unstable_sphere;
+            creators["oculus portal"] = &WotlkDungeonOccTriggerContext::oculus_portal;
             creators["drake mount"] = &WotlkDungeonOccTriggerContext::drake_mount;
             creators["drake dismount"] = &WotlkDungeonOccTriggerContext::drake_dismount;
             creators["group flying"] = &WotlkDungeonOccTriggerContext::group_flying;
@@ -26,6 +27,7 @@ class WotlkDungeonOccTriggerContext : public NamedObjectContext<Trigger>
         }
     private:
         static Trigger* unstable_sphere(PlayerbotAI* ai) { return new DrakosUnstableSphereTrigger(ai); }
+        static Trigger* oculus_portal(PlayerbotAI* ai) { return new OculusPortalTrigger(ai); }
         static Trigger* drake_mount(PlayerbotAI* ai) { return new DrakeMountTrigger(ai); }
         static Trigger* drake_dismount(PlayerbotAI* ai) { return new DrakeDismountTrigger(ai); }
         static Trigger* group_flying(PlayerbotAI* ai) { return new GroupFlyingTrigger(ai); }

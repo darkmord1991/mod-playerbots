@@ -39,6 +39,25 @@ bool AvoidUnstableSphereAction::Execute(Event /*event*/)
     return false;
 }
 
+bool OculusUsePortalAction::Execute(Event /*event*/)
+{
+    GameObject* portal = bot->FindNearestGameObject(GO_NEXUS_PORTAL, 150.0f);
+    if (!portal)
+    {
+        // Portal grid not loaded yet - walk the ring towards its known spawn.
+        return MoveTo(OCULUS_MAP_ID, OCULUS_NEXUS_PORTAL_POSITION.GetPositionX(),
+                      OCULUS_NEXUS_PORTAL_POSITION.GetPositionY(), OCULUS_NEXUS_PORTAL_POSITION.GetPositionZ());
+    }
+
+    if (!portal->IsAtInteractDistance(bot))
+        return MoveTo(portal, fmaxf(portal->GetInteractionDistance() - 1.0f, 0.0f));
+
+    WorldPacket data(CMSG_GAMEOBJ_USE);
+    data << portal->GetGUID();
+    bot->GetSession()->HandleGameObjectUseOpcode(data);
+    return true;
+}
+
 bool MountDrakeAction::isPossible() { return bot->GetMapId() == OCULUS_MAP_ID; }
 bool MountDrakeAction::Execute(Event /*event*/)
 {

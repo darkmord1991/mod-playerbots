@@ -2804,6 +2804,49 @@ AiPlayerbot.DCItemUpgrade.MaxLevelPercent = 100
 AiPlayerbot.DCItemUpgrade.CurrencyReserve = 0
 
 ###############################################################################
+# DARK CHAOS - HINTERLAND BG
+#
+# Hinterland BG is a DC custom battleground (BattlegroundTypeId 20, queue type
+# 14, map 1411). The queue side needs no configuration: the core registers it
+# in BattlegroundMgr's queue tables, so the ordinary bot BG scan picks it up and
+# AiPlayerbot.RandomBotJoinBG governs it like any other bracket. Bots fill the
+# HLBG queue once a real player is queued for it, up to MaxPlayersPerTeam (10)
+# a side.
+#
+# What this block controls is what a bot does after the port. HLBG has no
+# flags, no capturable nodes and no graveyard ownership -- both teams start
+# with a resource pool and drain the enemy's by killing their players, their
+# guard camps and their faction boss. So bots roam between the camps and the
+# two contested midfield outposts rather than running the objective logic the
+# stock battlegrounds use, and the ordinary combat strategies do the fighting.
+#
+# Disable with Enable = 0, or drop it from a bot at runtime with the non-combat
+# strategy command: nc -dc hinterland
+###############################################################################
+
+# Master switch for HLBG bot roaming. With this off, bots still queue and still
+# fight back when attacked, but will not leave their start position on their
+# own.
+AiPlayerbot.DCHinterland.Enable = 1
+
+# Seconds a bot commits to a destination before picking a new one, rolled per
+# objective between these two. Lower values make bots wander more and hold a
+# camp less.
+AiPlayerbot.DCHinterland.RepickSecondsMin = 45
+AiPlayerbot.DCHinterland.RepickSecondsMax = 90
+
+# Yards from the destination at which a bot counts as arrived and picks the
+# next one.
+AiPlayerbot.DCHinterland.ArrivalDistance = 18.0
+
+# Yards at which a live enemy player outranks the current destination: the bot
+# stops steering and lets the combat engine take the fight. Raising this makes
+# bots abandon objectives for PvP more eagerly - at 45 a bot in a crowded
+# midfield never reached a guard camp at all, and NPC kills were ~7% of all
+# resource drain.
+AiPlayerbot.DCHinterland.EngageDistance = 18.0
+
+###############################################################################
 # DARK CHAOS - BOT COSMETICS
 #
 # Purely visual variety for bots: mounts drawn from the whole DC mount catalog,

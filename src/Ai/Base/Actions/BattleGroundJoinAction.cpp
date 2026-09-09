@@ -8,6 +8,7 @@
 #include "ArenaTeam.h"
 #include "ArenaTeamMgr.h"
 #include "BattlegroundMgr.h"
+#include "DCHinterlandTactics.h"  // DarkChaos
 #include "Event.h"
 #include "GroupMgr.h"
 #include "PlayerbotAI.h"
@@ -471,6 +472,10 @@ bool BGJoinAction::JoinQueue(uint32 type)
         case BATTLEGROUND_IC:
             _bgType = "IoC";
             break;
+        // DarkChaos: Hinterland BG has no BattlegroundTypeId enumerator, see DCHinterlandTactics.h
+        case BattlegroundTypeId(DC_BATTLEGROUND_HLBG_TYPE_ID):
+            _bgType = "HLBG";
+            break;
         default:
             break;
     }
@@ -712,6 +717,9 @@ bool BGStatusAction::LeaveBG(PlayerbotAI* botAI)
     botAI->ChangeStrategy("-Battleground", BOT_STATE_NON_COMBAT);
     botAI->ChangeStrategy("-arena", BOT_STATE_COMBAT);
     botAI->ChangeStrategy("-arena", BOT_STATE_NON_COMBAT);
+    // DarkChaos: Hinterland BG roaming, see DCHinterlandTactics.h
+    botAI->ChangeStrategy("-dc hinterland", BOT_STATE_COMBAT);
+    botAI->ChangeStrategy("-dc hinterland", BOT_STATE_NON_COMBAT);
 
     LOG_INFO("playerbots", "Bot {} {}:{} <{}> leaves {}", bot->GetGUID().ToString().c_str(),
              bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName(),
@@ -733,6 +741,10 @@ bool BGStatusAction::LeaveBG(PlayerbotAI* botAI)
     PositionInfo pos = botAI->GetAiObjectContext()->GetValue<PositionMap&>("position")->Get()["bg objective"];
     pos.Reset();
     posMap["bg objective"] = pos;
+    // DarkChaos: HLBG keeps its roaming target in its own slot, see DCHinterlandTactics.h
+    PositionInfo hlbgPos = posMap[DC_HLBG_OBJECTIVE_KEY];
+    hlbgPos.Reset();
+    posMap[DC_HLBG_OBJECTIVE_KEY] = hlbgPos;
     return true;
 }
 
@@ -839,6 +851,10 @@ bool BGStatusAction::Execute(Event event)
             break;
         case BATTLEGROUND_IC:
             _bgType = "IoC";
+            break;
+        // DarkChaos: Hinterland BG has no BattlegroundTypeId enumerator, see DCHinterlandTactics.h
+        case BattlegroundTypeId(DC_BATTLEGROUND_HLBG_TYPE_ID):
+            _bgType = "HLBG";
             break;
         default:
             break;

@@ -6,6 +6,7 @@
 
 #include "AiFactory.h"
 #include "BattlegroundMgr.h"
+#include "DCHinterlandTactics.h"  // DarkChaos
 #include "DKAiObjectContext.h"
 #include "DruidAiObjectContext.h"
 #include "Engine.h"
@@ -706,6 +707,13 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
 
         if (bgType == BATTLEGROUND_IC)
             nonCombatEngine->addStrategy("isle", false);
+
+        // DarkChaos: Hinterland BG has no flags, nodes or graveyard ownership,
+        // so the objective-driven "battleground" strategy above deliberately
+        // skips it (its type id is outside that range) and it gets its own
+        // roaming strategy instead. See DCHinterlandTactics.h.
+        if (bgType == BattlegroundTypeId(DC_BATTLEGROUND_HLBG_TYPE_ID))
+            nonCombatEngine->addStrategy("dc hinterland", false);
 
         if (player->InArena())
         {

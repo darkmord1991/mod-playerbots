@@ -83,19 +83,37 @@ void ReleaseSpiritAction::LogRelease(std::string const& releaseMsg) const
 // AutoReleaseSpiritAction implementation
 bool AutoReleaseSpiritAction::Execute(Event /*event*/)
 {
-    IncrementDeathCount();
-    bot->DurabilityRepairAll(false, 1.0f, false);
-    LogRelease("auto released");
+    // Inside a battleground isUseful() deliberately keeps this action running
+    // after the bot is already a ghost, because this is also what walks it to
+    // the spirit healer. Releasing again is a no-op the server drops, so only
+    // do it while the bot is still a corpse. Without this guard every tick
+    // logged a release that never happened and, worse, incremented the death
+    // count - which is what SpiritHealerAction::GetGrave uses to decide the bot
+    // has died too often and should be teleported to its racial start, out of
+    // the battleground entirely.
+    if (!bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+    {
+        IncrementDeathCount();
+        bot->DurabilityRepairAll(false, 1.0f, false);
+        LogRelease("auto released");
 
-    WorldPacket packet(CMSG_REPOP_REQUEST);
-    packet << uint8(0);
-    bot->GetSession()->HandleRepopRequestOpcode(packet);
+        WorldPacket packet(CMSG_REPOP_REQUEST);
+        packet << uint8(0);
+        bot->GetSession()->HandleRepopRequestOpcode(packet);
 
-    LogRelease("releases spirit");
+        LogRelease("releases spirit");
+    }
 
     if (bot->InBattleground())
     {
-        return HandleBattlegroundSpiritHealer();
+        bool const handled = HandleBattlegroundSpiritHealer();
+
+        // Pace this whether or not a healer was found. Returning straight out
+        // left no check delay, so a battleground with no reachable spirit
+        // healer re-ran the whole action on every AI tick - one bot produced
+        // ~2800 release log lines in a single match that way.
+        botAI->SetNextCheckDelay(1000);
+        return handled;
     }
 
     botAI->SetNextCheckDelay(1000);

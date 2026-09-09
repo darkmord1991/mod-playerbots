@@ -16,6 +16,7 @@ class WotlkDungeonOccActionContext : public NamedObjectContext<Action>
     public:
         WotlkDungeonOccActionContext() {
             creators["avoid unstable sphere"] = &WotlkDungeonOccActionContext::avoid_unstable_sphere;
+            creators["use oculus portal"] = &WotlkDungeonOccActionContext::use_oculus_portal;
             creators["mount drake"] = &WotlkDungeonOccActionContext::mount_drake;
             creators["dismount drake"] = &WotlkDungeonOccActionContext::dismount_drake;
             creators["occ fly drake"] = &WotlkDungeonOccActionContext::occ_fly_drake;
@@ -25,6 +26,7 @@ class WotlkDungeonOccActionContext : public NamedObjectContext<Action>
         }
     private:
         static Action* avoid_unstable_sphere(PlayerbotAI* ai) { return new AvoidUnstableSphereAction(ai); }
+        static Action* use_oculus_portal(PlayerbotAI* ai) { return new OculusUsePortalAction(ai); }
         static Action* mount_drake(PlayerbotAI* ai) { return new MountDrakeAction(ai); }
         static Action* dismount_drake(PlayerbotAI* ai) { return new DismountDrakeAction(ai); }
         static Action* occ_fly_drake(PlayerbotAI* ai) { return new OccFlyDrakeAction(ai); }
