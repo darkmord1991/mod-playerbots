@@ -6,6 +6,7 @@
 
 #include "BattleGroundTactics.h"
 #include "Chat.h"
+#include "DCHinterlandMonitor.h"
 #include "GuildTaskMgr.h"
 #include "PerfMonitor.h"
 #include "PlayerbotAIConfig.h"
@@ -41,6 +42,7 @@ public:
             {"pmon", HandlePerfMonCommand, SEC_GAMEMASTER, Console::Yes},
             {"rndbot", HandleRandomPlayerbotCommand, SEC_GAMEMASTER, Console::Yes},
         {"status", HandlePlayerbotStatusCommand, SEC_GAMEMASTER, Console::Yes},
+            {"hlbg", HandleHinterlandMonitorCommand, SEC_GAMEMASTER, Console::Yes},
             {"debug", playerbotsDebugCommandTable},
             {"account", playerbotsAccountCommandTable},
         };
@@ -169,6 +171,14 @@ public:
     static bool HandleDebugBGCommand(ChatHandler* handler, char const* args)
     {
         return BGTactics::HandleConsoleCommand(handler, args);
+    }
+
+    // Bot-side readout for the Hinterland BG: per-team bot counts, how many are
+    // actually moving, how far they have got from their own base, the resource
+    // pools, and any bot the roaming watchdog has reported as wedged.
+    static bool HandleHinterlandMonitorCommand(ChatHandler* handler, char const* args)
+    {
+        return DCHinterlandMonitor::HandleStatusCommand(handler, args);
     }
 
     static bool HandleSetSecurityKeyCommand(ChatHandler* handler, char const* args)

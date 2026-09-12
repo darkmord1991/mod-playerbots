@@ -4841,16 +4841,46 @@ void TravelMgr::PrepareDestinationCache()
         {
             CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureDataList[0].id);
             uint32 level = (creatureTemplate->minlevel + creatureTemplate->maxlevel + 1) / 2;
+
+            // Use a real spawn of the cell as the grind destination. The cell key rounds every axis
+            // to 50 yards, so key * 50 put the destination up to 25 yards above or below the ground
+            // (on Azshara Crater 15-30 yards): pathing there never closes the distance, and the stuck
+            // recovery in MoveFarTo then teleports the bot onto that same height - into the air or
+            // under the terrain. The spawn nearest the cell's centre keeps the cell's position while
+            // standing where a creature of the cell actually stands.
+            float centerX = 0.0f;
+            float centerY = 0.0f;
+            for (CreatureData const& data : creatureDataList)
+            {
+                centerX += data.posX;
+                centerY += data.posY;
+            }
+            centerX /= static_cast<float>(creatureDataList.size());
+            centerY /= static_cast<float>(creatureDataList.size());
+
+            CreatureData const* anchor = &creatureDataList[0];
+            float bestDistSq = -1.0f;
+            for (CreatureData const& data : creatureDataList)
+            {
+                float const dx = data.posX - centerX;
+                float const dy = data.posY - centerY;
+                float const distSq = dx * dx + dy * dy;
+                if (bestDistSq < 0.0f || distSq < bestDistSq)
+                {
+                    bestDistSq = distSq;
+                    anchor = &data;
+                }
+            }
+
+            WorldLocation const grindLoc(std::get<0>(gridTuple), anchor->posX, anchor->posY, anchor->posZ);
+
             for (int32 l = (int32)level - (int32)sPlayerbotAIConfig.randomBotTeleLowerLevel;
                  l <= (int32)level + (int32)sPlayerbotAIConfig.randomBotTeleHigherLevel; l++)
             {
                 if (l < 1 || l > int32(maxLevel))
                     continue;
 
-                locsPerLevelCache[(uint8)l].push_back(WorldLocation(std::get<0>(gridTuple),
-                    static_cast<float>(std::get<1>(gridTuple)) * 50.0f,
-                    static_cast<float>(std::get<2>(gridTuple)) * 50.0f,
-                    static_cast<float>(std::get<3>(gridTuple)) * 50.0f));
+                locsPerLevelCache[(uint8)l].push_back(grindLoc);
             }
         }
     }

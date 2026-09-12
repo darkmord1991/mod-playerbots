@@ -4,6 +4,9 @@
 
 #include "DCHinterlandTactics.h"
 
+#include "DCHinterlandGeography.h"
+#include "DCHinterlandMonitor.h"
+
 #include "Battleground.h"
 #include "Config.h"
 #include "Event.h"
@@ -13,59 +16,6 @@
 
 namespace
 {
-    struct HLBGPoint
-    {
-        float x;
-        float y;
-        float z;
-    };
-
-    // Geography read off the live map-1411 spawn table. The battleground runs
-    // in an instance, so only the coordinates are reused -- the map id comes
-    // from Battleground::GetMapId() at the call site.
-    //
-    // Alliance holds the Wildhammer camp in the east, Horde the Revantusk /
-    // Kor'kron camp in the west, and both sides garrison the two mixed outposts
-    // in the middle where their infantry lines meet.
-    constexpr HLBGPoint HLBG_ALLIANCE_CAMP     = { 17.0f, -4662.0f, 10.5f };
-    constexpr HLBGPoint HLBG_ALLIANCE_LINE     = { -110.0f, -4617.0f, 11.0f };
-    constexpr HLBGPoint HLBG_ALLIANCE_BOSS     = { 175.9f, -4736.8f, 14.7f };  // King Varian Wrynn, 810003
-    // The battleground's own team start (game_graveyard 1721). Using the spot the
-    // BG teleports arrivals to is guaranteed walkable and inside StartMaxDist.
-    constexpr HLBGPoint HLBG_ALLIANCE_STAGING  = { 197.165f, -4808.54f, 7.848f };
-
-    constexpr HLBGPoint HLBG_HORDE_CAMP        = { -546.0f, -4560.0f, 12.0f };
-    constexpr HLBGPoint HLBG_HORDE_LINE        = { -500.0f, -4560.0f, 10.0f };
-    constexpr HLBGPoint HLBG_HORDE_BOSS        = { -623.7f, -4581.6f, 11.7f };  // Thrall Warchief, 810002
-    // game_graveyard 1722. The previous value was averaged off the Revantusk
-    // Drummer spawns, which sit on a platform at z 30.5 - about 20 yards above
-    // the surrounding ground, so Horde bots were being sent somewhere they could
-    // not path to during the prep phase.
-    constexpr HLBGPoint HLBG_HORDE_STAGING     = { -628.484f, -4684.51f, 5.144f };
-
-    constexpr HLBGPoint HLBG_MID_NORTH         = { -370.0f, -4428.0f, 12.5f };
-    constexpr HLBGPoint HLBG_MID_CENTER        = { -315.0f, -4510.0f, 12.5f };
-
-    struct HLBGSideView
-    {
-        HLBGPoint ownCamp;
-        HLBGPoint ownLine;
-        HLBGPoint ownStaging;
-        HLBGPoint enemyCamp;
-        HLBGPoint enemyLine;
-        HLBGPoint enemyBoss;
-    };
-
-    HLBGSideView GetSideView(TeamId teamId)
-    {
-        if (teamId == TEAM_ALLIANCE)
-            return { HLBG_ALLIANCE_CAMP, HLBG_ALLIANCE_LINE, HLBG_ALLIANCE_STAGING,
-                     HLBG_HORDE_CAMP, HLBG_HORDE_LINE, HLBG_HORDE_BOSS };
-
-        return { HLBG_HORDE_CAMP, HLBG_HORDE_LINE, HLBG_HORDE_STAGING,
-                 HLBG_ALLIANCE_CAMP, HLBG_ALLIANCE_LINE, HLBG_ALLIANCE_BOSS };
-    }
-
     struct HLBGConfig
     {
         bool enabled = true;
@@ -73,6 +23,9 @@ namespace
         uint32 repickSecondsMax = 90;
         float arrivalDistance = 18.0f;
         float engageDistance = 18.0f;
+        uint32 stallSeconds = 20;
+        float stallDistance = 3.0f;
+        uint32 unstickTeleportStrikes = 3;
     };
 
     HLBGConfig const& GetConfig()
@@ -88,6 +41,10 @@ namespace
             c.repickSecondsMax = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.RepickSecondsMax", 90);
             c.arrivalDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.ArrivalDistance", 18.0f);
             c.engageDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.EngageDistance", 18.0f);
+            c.stallSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.StallSeconds", 20);
+            c.stallDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.StallDistance", 3.0f);
+            c.unstickTeleportStrikes =
+                sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.UnstickTeleportStrikes", 3);
 
             if (c.repickSecondsMax < c.repickSecondsMin)
                 c.repickSecondsMax = c.repickSecondsMin;
@@ -151,21 +108,21 @@ bool DCHinterlandTacticsAction::MoveToStaging()
     // The battleground teleports arrivals onto the team start and enforces
     // StartMaxDist (25y) until the doors open, so this only spreads the bots
     // out inside that radius rather than moving them anywhere new.
-    HLBGSideView const side = GetSideView(bot->GetBgTeamId());
+    DCHinterland::SideView const side = DCHinterland::GetSideView(bot->GetBgTeamId());
     return MoveTo(bg->GetMapId(), side.ownStaging.x + frand(-6.0f, 6.0f), side.ownStaging.y + frand(-6.0f, 6.0f),
                   side.ownStaging.z);
 }
 
 bool DCHinterlandTacticsAction::SelectObjective()
 {
-    HLBGSideView const side = GetSideView(bot->GetBgTeamId());
+    DCHinterland::SideView const side = DCHinterland::GetSideView(bot->GetBgTeamId());
 
     // "bg role" is rolled 0-9 when the bot accepts the battleground port. It is
     // set for every battleground type, HLBG included, so it is free to reuse as
     // a stable per-match disposition instead of re-rolling one here.
     uint32 const role = AI_VALUE(uint32, "bg role");
 
-    auto rollTarget = [&side, role]() -> HLBGPoint
+    auto rollTarget = [&side, role]() -> DCHinterland::Point
     {
         if (role <= 1)
         {
@@ -178,7 +135,7 @@ bool DCHinterlandTacticsAction::SelectObjective()
         {
             // Midfield. The two mixed outposts are where both infantry lines
             // meet, which is where the player kills happen.
-            return urand(0, 1) ? HLBG_MID_CENTER : HLBG_MID_NORTH;
+            return urand(0, 1) ? DCHinterland::MID_CENTER : DCHinterland::MID_NORTH;
         }
 
         // Offence: push the enemy camp, and occasionally go for the boss, which
@@ -193,7 +150,7 @@ bool DCHinterlandTacticsAction::SelectObjective()
     // enough - the buckets a role can draw from are far enough apart that one or
     // two rolls almost always move it.
     float const rerollRadius = GetConfig().arrivalDistance * 2.0f;
-    HLBGPoint target = rollTarget();
+    DCHinterland::Point target = rollTarget();
     for (uint32 attempt = 0; attempt < 3; ++attempt)
     {
         if (!bot->IsWithinDist3d(target.x, target.y, target.z, rerollRadius))
@@ -206,9 +163,24 @@ bool DCHinterlandTacticsAction::SelectObjective()
     if (!bg)
         return false;
 
+    // The jitter spreads bots out so a camp does not become a stack of bodies
+    // on one coordinate, but it moves x and y only, and the table's z belongs to
+    // the unjittered point. On the Alliance side, which is flat ground, that is
+    // harmless. On the Horde side it is not: the Revantusk village sits on a
+    // wooden platform about 7 yards above the beach the team spawns on, so a
+    // jittered target could end up hanging in the air off the platform edge,
+    // where the path search returns INVALID_HEIGHT and MoveTo quietly does
+    // nothing - for the whole 45-90s the bot had committed to that target.
+    // Snapping z to whatever is actually walkable under the jittered x/y is what
+    // makes the target reachable in the first place.
+    float targetX = target.x + frand(-8.0f, 8.0f);
+    float targetY = target.y + frand(-8.0f, 8.0f);
+    float targetZ = target.z;
+    bot->UpdateAllowedPositionZ(targetX, targetY, targetZ);
+
     PositionMap& posMap = AI_VALUE(PositionMap&, "position");
     PositionInfo objective;
-    objective.Set(target.x + frand(-8.0f, 8.0f), target.y + frand(-8.0f, 8.0f), target.z, bg->GetMapId());
+    objective.Set(targetX, targetY, targetZ, bg->GetMapId());
     posMap[DC_HLBG_OBJECTIVE_KEY] = objective;
 
     HLBGConfig const& cfg = GetConfig();
@@ -260,9 +232,95 @@ bool DCHinterlandTacticsAction::MoveToObjective()
     // apart in the Horde base, that read as bots pacing back and forth and never
     // leaving. The objective now only changes when the dwell timer expires.
     if (bot->IsWithinDist3d(objective.x, objective.y, objective.z, cfg.arrivalDistance))
+    {
+        // Standing on the objective is the job, not a stall.
+        NoteProgress();
         return false;
+    }
+
+    // Still travelling. If no ground has been covered for the whole stall
+    // window, the target is unreachable from here and waiting out the rest of
+    // the dwell timer just burns the match - take a new one now.
+    if (IsStalled())
+    {
+        if (!SelectObjective())
+            return false;
+
+        objective = posMap[DC_HLBG_OBJECTIVE_KEY];
+    }
 
     return MoveTo(objective.mapId, objective.x, objective.y, objective.z);
+}
+
+void DCHinterlandTacticsAction::NoteProgress()
+{
+    _lastX = bot->GetPositionX();
+    _lastY = bot->GetPositionY();
+    _lastZ = bot->GetPositionZ();
+    _hasLastPos = true;
+    _lastProgressMs = getMSTime();
+    _stallStrikes = 0;
+}
+
+bool DCHinterlandTacticsAction::IsStalled()
+{
+    HLBGConfig const& cfg = GetConfig();
+    uint32 const now = getMSTime();
+
+    // MoveTo() returning false is not the signal: it says so for three
+    // different reasons - the path search failed, the bot is already heading
+    // there, or the previous move's delay has not run out - and only the first
+    // is a problem. Actual displacement is unambiguous.
+    uint32 const sinceTick = now - _lastTickMs;
+    _lastTickMs = now;
+
+    // isUseful() blocks this action while the bot is in combat, dead or being
+    // teleported, so a gap between ticks means the bot was busy elsewhere, not
+    // that it stood still. Rebase instead of counting it.
+    if (!_hasLastPos || !_lastProgressMs || sinceTick > 5 * IN_MILLISECONDS)
+    {
+        NoteProgress();
+        return false;
+    }
+
+    if (bot->GetExactDist(_lastX, _lastY, _lastZ) > cfg.stallDistance)
+    {
+        NoteProgress();
+        return false;
+    }
+
+    if (!cfg.stallSeconds || (now - _lastProgressMs) < cfg.stallSeconds * IN_MILLISECONDS)
+        return false;
+
+    ++_stallStrikes;
+    DCHinterlandMonitor::NoteStall(bot, _stallStrikes);
+
+    // Repeated strikes mean rerolling the target is not helping, so the bot is
+    // not standing next to an unreachable point - it is standing somewhere
+    // nothing is reachable from. The staging area is the one spot on the map the
+    // battleground itself guarantees is walkable, and its own AFK sweep already
+    // moves players there, so this borrows the same remedy.
+    if (cfg.unstickTeleportStrikes && _stallStrikes >= cfg.unstickTeleportStrikes)
+    {
+        DCHinterland::Point const staging = DCHinterland::GetSideView(bot->GetBgTeamId()).ownStaging;
+        float const x = staging.x + frand(-5.0f, 5.0f);
+        float const y = staging.y + frand(-5.0f, 5.0f);
+        float z = staging.z;
+        bot->UpdateAllowedPositionZ(x, y, z);
+
+        DCHinterlandMonitor::NoteUnstickTeleport(bot);
+        bot->NearTeleportTo(x, y, z, bot->GetOrientation());
+        _stallStrikes = 0;
+    }
+
+    // Whatever happened, this counts as a fresh start for the watchdog: give the
+    // replacement target a full window before deciding it failed too.
+    _lastX = bot->GetPositionX();
+    _lastY = bot->GetPositionY();
+    _lastZ = bot->GetPositionZ();
+    _lastProgressMs = now;
+
+    return true;
 }
 
 bool DCHinterlandResetObjectiveAction::isUseful()

@@ -12,6 +12,7 @@
 #include "ObjectGuid.h"
 #include "PlayerbotCommandServer.h"
 #include "PlayerbotMgr.h"
+#include <mutex>
 #include <unordered_set>
 
 struct BattlegroundInfo
@@ -225,6 +226,8 @@ private:
     bool _isBotInitializing = true;
     bool _isBotLogging = true;
     NewRpgStatistic rpgStasticTotal;
+    void LoadEventCache(uint32 bot);
+    // Caller must hold _eventCacheMutex; the pointer is only valid while it is held.
     CachedEvent* FindEvent(uint32 bot, std::string const& event);
     uint32 GetEventValue(uint32 bot, std::string const& event);
     std::string GetEventData(uint32 bot, std::string const& event);
@@ -251,7 +254,9 @@ private:
     // std::map<uint32, std::vector<WorldLocation>> rpgLocsCache;
     std::map<uint32, std::map<uint32, std::vector<WorldLocation>>> rpgLocsCacheLevel;
     std::map<TeamId, std::map<BattlegroundTypeId, std::vector<uint32>>> BattleMastersCache;
+    // Read and written from the map update threads as well as the world thread.
     std::unordered_map<uint32, BotEventCache> eventCache;
+    std::mutex _eventCacheMutex;
     std::unordered_set<uint32> currentBots;
     uint32 playersLevel;
 

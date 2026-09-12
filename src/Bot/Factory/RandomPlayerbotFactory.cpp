@@ -25,6 +25,7 @@
 #include "SocialMgr.h"
 #include "StringFormat.h"
 #include "Timer.h"
+#include <functional>
 
 namespace
 {
@@ -88,6 +89,47 @@ namespace
 
         player->SetFullHealth();
         player->SetPower(POWER_MANA, player->GetMaxPower(POWER_MANA));
+    }
+
+    // Blocks until the asynchronous queues counted by `queued` are empty, so rows written through
+    // Execute() are visible to the synchronous reads that follow.
+    //
+    // This runs on the world thread inside OnBeforeWorldInitialized, before the core's freeze
+    // detector is armed. The old unbounded `while (QueueSize()) sleep` hung startup silently - no log
+    // line, no crash dump - whenever a worker stalled (reconnecting to MySQL, waiting on a lock). It
+    // now reports progress and gives up after a fixed time: an account that is not written yet is
+    // skipped until the next start, and a character that is not written yet fails its login and is
+    // retried by the random bot manager.
+    bool WaitForDatabaseQueues(char const* what, std::function<std::size_t()> const& queued)
+    {
+        constexpr uint32 timeoutMs = 5 * MINUTE * IN_MILLISECONDS;
+        constexpr uint32 reportIntervalMs = 10 * IN_MILLISECONDS;
+
+        uint32 const startTime = getMSTime();
+        uint32 lastReport = startTime;
+
+        while (std::size_t const pending = queued())
+        {
+            if (GetMSTimeDiffToNow(startTime) >= timeoutMs)
+            {
+                LOG_ERROR("playerbots", "Gave up waiting for {} after {} s with {} queries still queued, "
+                          "continuing startup", what, timeoutMs / IN_MILLISECONDS, pending);
+                return false;
+            }
+
+            if (GetMSTimeDiffToNow(lastReport) >= reportIntervalMs)
+            {
+                LOG_WARN("playerbots", "Still waiting for {}: {} queries queued after {} s", what, pending,
+                         GetMSTimeDiffToNow(startTime) / IN_MILLISECONDS);
+                lastReport = getMSTime();
+            }
+
+            std::this_thread::sleep_for(250ms);
+        }
+
+        // QueueSize() does not count the operation a worker is still executing; let it commit.
+        std::this_thread::sleep_for(100ms);
+        return true;
     }
 }
 
@@ -483,18 +525,7 @@ uint32 RandomPlayerbotFactory::CalculateTotalAccountCount()
         } while (typeCheck->NextRow());
     }
 
-    // Determine divisor based on Death Knight availability and requested A&H faction ratio
-    int divisor = CalculateAvailableCharsPerAccount();
-
-    // Calculate max bots
-    int maxBots = sPlayerbotAIConfig.maxRandomBots;
-    // Take periodic online/offline into account
-    if (sPlayerbotAIConfig.enablePeriodicOnlineOffline)
-        maxBots *= sPlayerbotAIConfig.periodicOnlineOfflineRatio;
-
-    // Calculate number of accounts needed for RNDbots
-    // Result is rounded up for maxBots not cleanly divisible by the divisor
-    uint32 neededRndBotAccounts = (maxBots + divisor - 1) / divisor;
+    uint32 neededRndBotAccounts = CalculateNeededRndBotAccounts();
     uint32 neededAddClassAccounts = sPlayerbotAIConfig.addClassAccountPoolSize;
 
     // Start with existing total
@@ -567,6 +598,43 @@ uint32 RandomPlayerbotFactory::CalculateAvailableCharsPerAccount()
     return availableChars;
 }
 
+// RNDbot accounts needed to keep MaxRandomBots loginable. A retired bot keeps its character slot on an
+// RNDbot account but never logs in again, so the pool is sized for those characters on top of the
+// target. Without that every retirement shrank the usable pool until bot_count re-rolled above it and
+// AddRandomBots logged "Can't log-in all the requested bots" every ten seconds.
+uint32 RandomPlayerbotFactory::CalculateNeededRndBotAccounts()
+{
+    if (sPlayerbotAIConfig.maxRandomBots == 0)
+        return 0;
+
+    // Determine divisor based on Death Knight availability and requested A&H faction ratio
+    int divisor = CalculateAvailableCharsPerAccount();
+
+    int maxBots = sPlayerbotAIConfig.maxRandomBots;
+    // Take periodic online/offline into account
+    if (sPlayerbotAIConfig.enablePeriodicOnlineOffline)
+        maxBots *= sPlayerbotAIConfig.periodicOnlineOfflineRatio;
+
+    maxBots += CountRetiredRandomBots();
+
+    // Result is rounded up for maxBots not cleanly divisible by the divisor
+    return (maxBots + divisor - 1) / divisor;
+}
+
+// Random bots taken out of the rotation for good. RetireBot() gives them a "logout" lease far longer
+// than any rotation lease ProcessBot() hands out (at most MaxRandomBotInWorldTime), so the lease length
+// is what separates a retirement from an ordinary logout. A lapsed lease no longer counts: that bot logs
+// in once more and is retired again.
+uint32 RandomPlayerbotFactory::CountRetiredRandomBots()
+{
+    QueryResult result = PlayerbotsDatabase.Query(
+        "SELECT COUNT(DISTINCT bot) FROM playerbots_random_bots WHERE owner = 0 AND event = 'logout' "
+        "AND value <> 0 AND validIn > {} AND `time` + validIn > UNIX_TIMESTAMP()",
+        sPlayerbotAIConfig.maxRandomBotInWorldTime);
+
+    return result ? static_cast<uint32>((*result)[0].Get<uint64>()) : 0;
+}
+
 void RandomPlayerbotFactory::CreateRandomBots()
 {
     /* multi-thread here is meaningless? since the async db operations */
@@ -605,11 +673,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
             sPlayerbotAIConfig.randomBotAccountPrefix.c_str());
 
         // Wait for the characters to be deleted before proceeding to dependent deletes
-        while (CharacterDatabase.QueueSize())
-        {
-            std::this_thread::sleep_for(1s);
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));    // Extra 100ms fixed delay for safety.
+        WaitForDatabaseQueues("bot character deletion", [] { return CharacterDatabase.QueueSize(); });
 
         // Clean up orphaned entries in playerbots_guild_tasks
         PlayerbotsDatabase.Execute("DELETE FROM playerbots_guild_tasks WHERE owner NOT IN (SELECT guid FROM " + characterDBName + ".characters)");
@@ -692,11 +756,10 @@ void RandomPlayerbotFactory::CreateRandomBots()
         PlayerbotsDatabase.Execute("COMMIT");
 
         // Wait for all pending database operations to complete
-        while (LoginDatabase.QueueSize() || CharacterDatabase.QueueSize() || PlayerbotsDatabase.QueueSize())
+        WaitForDatabaseQueues("bot data deletion", []
         {
-            std::this_thread::sleep_for(1s);
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));    // Extra 100ms fixed delay for safety.
+            return LoginDatabase.QueueSize() + CharacterDatabase.QueueSize() + PlayerbotsDatabase.QueueSize();
+        });
 
         // Flush tables to ensure all data in memory are written to disk
         LoginDatabase.Execute("FLUSH TABLES");
@@ -751,11 +814,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
     {
         LOG_INFO("playerbots", "Waiting for {} accounts loading into database ({} queries)...", account_creation, LoginDatabase.QueueSize());
         /* wait for async accounts create to make character create correctly */
-
-        while (LoginDatabase.QueueSize())
-        {
-            std::this_thread::sleep_for(1s);
-        }
+        WaitForDatabaseQueues("bot account creation", [] { return LoginDatabase.QueueSize(); });
         LOG_INFO("playerbots", ">> {} Accounts loaded into database in {} ms", account_creation, GetMSTimeDiffToNow(timer));
     }
 
@@ -796,7 +855,12 @@ void RandomPlayerbotFactory::CreateRandomBots()
         {
             nameCached = true;
             LOG_INFO("playerbots", "Creating cache for names per gender and race...");
-            QueryResult result = CharacterDatabase.Query("SELECT name, gender FROM playerbots_names");
+            // Taken names are filtered in the query. Checking every row of playerbots_names (100k) with
+            // its own CHAR_SEL_CHECK_NAME round trip held the world thread for minutes whenever a single
+            // bot account was short of characters at boot, which looked exactly like a hung startup.
+            QueryResult result = CharacterDatabase.Query(
+                "SELECT n.name, n.gender FROM playerbots_names n "
+                "LEFT OUTER JOIN characters c ON c.name = n.name WHERE c.guid IS NULL");
             if (!result)
             {
                 LOG_ERROR("playerbots", "No more unused names left");
@@ -808,16 +872,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
                 std::string name = fields[0].Get<std::string>();
                 NameRaceAndGender raceAndGender = static_cast<NameRaceAndGender>(fields[1].Get<uint8>());
                 if (sObjectMgr->CheckPlayerName(name) == CHAR_NAME_SUCCESS)
-                {
-                    CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHECK_NAME);
-                    stmt->SetData(0, name);
-
-                    if (PreparedQueryResult result = CharacterDatabase.Query(stmt))
-                        continue;
-
                     nameCache[raceAndGender].push_back(name);
-                }
-
             } while (result->NextRow());
         }
 
@@ -859,10 +914,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
     {
         LOG_INFO("playerbots", "Waiting for {} characters loading into database ({} queries)...", bot_creation, CharacterDatabase.QueueSize());
         /* wait for characters load into database, or characters will fail to loggin */
-        while (CharacterDatabase.QueueSize())
-        {
-            std::this_thread::sleep_for(1s);
-        }
+        WaitForDatabaseQueues("bot character creation", [] { return CharacterDatabase.QueueSize(); });
         LOG_INFO("playerbots", ">> {} Characters loaded into database in {} ms", bot_creation, GetMSTimeDiffToNow(timer));
     }
 

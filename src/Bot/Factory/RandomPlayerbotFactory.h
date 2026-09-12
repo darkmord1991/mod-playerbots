@@ -56,6 +56,8 @@ public:
     static std::string const CreateRandomGuildName();
     static uint32 CalculateTotalAccountCount();
     static uint32 CalculateAvailableCharsPerAccount();
+    static uint32 CalculateNeededRndBotAccounts();
+    static uint32 CountRetiredRandomBots();
 
     // Arena team management
     static void AssignBotToArenaTeam(Player* bot);

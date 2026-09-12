@@ -16,8 +16,10 @@
 #include "RandomPlayerbotFactory.h"
 #include "RandomPlayerbotMgr.h"
 #include "Talentspec.h"
+#include "Timer.h"
 #include "TravelMgr.h"
 #include <cctype>
+#include <functional>
 #include <iostream>
 #include <sstream>
 
@@ -760,36 +762,50 @@ bool PlayerbotAIConfig::Initialize()
 
     selfBotLevel = sConfigMgr->GetOption<int32>("AiPlayerbot.SelfBotLevel", 1);
 
-    RandomPlayerbotFactory::CreateRandomBots();
-    if (World::IsStopped())
+    // Each step is announced before it runs. All of this happens inside OnBeforeWorldInitialized,
+    // before the core's freeze detector is armed, so a boot that stalls here otherwise gives no hint
+    // of where it is stuck.
+    auto const runStartupStep = [](char const* name, std::function<void()> const& step)
     {
+        LOG_INFO("playerbots", "Playerbots startup: {}...", name);
+        uint32 const startTime = getMSTime();
+        step();
+
+        uint32 const elapsed = GetMSTimeDiffToNow(startTime);
+        if (elapsed >= IN_MILLISECONDS)
+            LOG_INFO("playerbots", "Playerbots startup: {} took {} ms", name, elapsed);
+    };
+
+    runStartupStep("bot accounts and characters", [] { RandomPlayerbotFactory::CreateRandomBots(); });
+    if (World::IsStopped())
         return true;
-    }
 
     // Assign account types after accounts are created
-    sRandomPlayerbotMgr.AssignAccountTypes();
+    runStartupStep("account types", [] { sRandomPlayerbotMgr.AssignAccountTypes(); });
 
     if (sPlayerbotAIConfig.enabled)
+        runStartupStep("random bot manager", [] { sRandomPlayerbotMgr.Init(); });
+
+    runStartupStep("guilds", [] { PlayerbotGuildMgr::instance().Init(); });
+    runStartupStep("arena teams", [] { sRandomPlayerbotMgr.InitArenaTeams(); });
+    runStartupStep("item caches", []
     {
-        sRandomPlayerbotMgr.Init();
-    }
-
-    PlayerbotGuildMgr::instance().Init();
-    sRandomPlayerbotMgr.InitArenaTeams();
-    sRandomItemMgr.Init();
-    sRandomItemMgr.InitAfterAhBot();
-    sBisListMgr->LoadAll();
-    PlayerbotTextMgr::instance().LoadBotTexts();
-    PlayerbotTextMgr::instance().LoadBotTextChance();
-    PlayerbotFactory::Init();
-
-    AiObjectContext::BuildAllSharedContexts();
+        sRandomItemMgr.Init();
+        sRandomItemMgr.InitAfterAhBot();
+    });
+    runStartupStep("BiS lists", [] { sBisListMgr->LoadAll(); });
+    runStartupStep("bot texts", []
+    {
+        PlayerbotTextMgr::instance().LoadBotTexts();
+        PlayerbotTextMgr::instance().LoadBotTextChance();
+    });
+    runStartupStep("factory", [] { PlayerbotFactory::Init(); });
+    runStartupStep("shared AI contexts", [] { AiObjectContext::BuildAllSharedContexts(); });
 
     if (sPlayerbotAIConfig.randomBotSuggestDungeons)
-    {
-        PlayerbotDungeonRepository::instance().LoadDungeonSuggestions();
-    }
-    sTravelMgr.Init();
+        runStartupStep("dungeon suggestions", [] { PlayerbotDungeonRepository::instance().LoadDungeonSuggestions(); });
+
+    runStartupStep("travel manager", [] { sTravelMgr.Init(); });
 
     excludedHunterPetFamilies.clear();
     LoadList<std::vector<uint32>>(sConfigMgr->GetOption<std::string>("AiPlayerbot.ExcludedHunterPetFamilies", ""), excludedHunterPetFamilies);

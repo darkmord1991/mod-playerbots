@@ -2854,6 +2854,126 @@ AiPlayerbot.DCHinterland.ArrivalDistance = 18.0
 # resource drain.
 AiPlayerbot.DCHinterland.EngageDistance = 18.0
 
+# ---------------------------------------------------------------------------
+# HLBG stuck-bot watchdog
+#
+# MoveTo() reports failure for three different reasons - the path search failed,
+# the bot is already heading there, or the previous move has not finished - so
+# the bots could not tell an unreachable target from a normal one and simply
+# stood still for the rest of the 45-90s they had committed to it. That is what
+# left Horde bots parked at their base: their objectives sit on the Revantusk
+# village platform ~7 yards above the beach they spawn on, and a jittered target
+# landing off the platform edge fails the path search every time.
+#
+# The watchdog measures ground actually covered instead. It only applies while a
+# bot is travelling - sitting on its objective is the job, not a stall.
+# ---------------------------------------------------------------------------
+
+# Seconds a bot may spend outside its objective's arrival radius without
+# covering StallDistance yards before the target is treated as unreachable and
+# rerolled. 0 disables the watchdog entirely.
+AiPlayerbot.DCHinterland.StallSeconds = 20
+
+# Yards that count as progress within the window above. Generous on purpose - a
+# running bot covers well over a hundred yards in 20 seconds, so this only has
+# to clear position jitter and knockbacks.
+AiPlayerbot.DCHinterland.StallDistance = 3.0
+
+# After this many rerolls in a row with no movement, the bot is not next to one
+# bad point, it is somewhere nothing is reachable from: teleport it to its own
+# staging area, which is the one spot the battleground guarantees is walkable
+# (its own AFK sweep already sends players there). 0 never teleports.
+AiPlayerbot.DCHinterland.UnstickTeleportStrikes = 3
+
+# ---------------------------------------------------------------------------
+# HLBG bot monitoring
+#
+# Reports to the `playerbots.hlbg` log category while a match runs, and once
+# more at the horn. `.playerbots hlbg` prints the latest sample in-game or on
+# the console.
+#
+# The column to watch is `away` - the share of a team's bots further than
+# AwayDistance from their own staging area. A team that is fighting sits near
+# 100%; a team wedged at its base sits near 0%. Nothing on the scoreboard
+# distinguishes those two.
+# ---------------------------------------------------------------------------
+
+AiPlayerbot.DCHinterland.Monitor.Enable = 1
+
+# How often the roster is sampled. Cheap - it walks at most 20 players.
+AiPlayerbot.DCHinterland.Monitor.SampleSeconds = 3
+
+# How often a summary line per team goes to the log. 0 logs only the closing
+# report at the end of the match.
+AiPlayerbot.DCHinterland.Monitor.ReportSeconds = 60
+
+# Yards a bot must cover between two samples to count as moving.
+AiPlayerbot.DCHinterland.Monitor.MovedDistance = 3.0
+
+# Yards from its own staging area past which a bot counts as having left base.
+AiPlayerbot.DCHinterland.Monitor.AwayDistance = 60.0
+
+# ---------------------------------------------------------------------------
+# HLBG bot chatter
+#
+# Without this the battleground chat window stays empty for the whole match no
+# matter how many bots are in it, which is what makes a full HLBG read as dead.
+# Bots talk in the battleground channel (CHAT_MSG_BATTLEGROUND, what the client
+# shows when a real player types in a BG) to their own team only, and only when
+# there is at least one real player on that team to read it.
+#
+# Everything below is a limiter. Four of them apply to EVERY line, so raising a
+# single chance value does not on its own make bots spammy - the per-team gap,
+# the per-minute budget and the per-bot cooldown still hold.
+# ---------------------------------------------------------------------------
+
+# Master switch for all HLBG bot chat, /say taunts and emotes.
+AiPlayerbot.DCHinterland.Chatter.Enable = 1
+
+# Hard floor between any two bot lines on the same team. Only the match-start
+# and match-result lines ignore it, because those are tied to a moment rather
+# than to a rhythm.
+AiPlayerbot.DCHinterland.Chatter.MinSecondsBetweenLines = 12
+
+# Rolling budget: at most this many bot lines per team per minute, whatever else
+# happens in the match.
+AiPlayerbot.DCHinterland.Chatter.LinesPerMinute = 5
+
+# A bot that just said something stays quiet this long, so one bot cannot carry
+# the whole conversation.
+AiPlayerbot.DCHinterland.Chatter.BotCooldownSeconds = 60
+
+# How many recent lines are remembered per team and refused if repeated. Back to
+# back repeats are the most obvious tell that chat is generated.
+AiPlayerbot.DCHinterland.Chatter.RecentMemory = 6
+
+# Filler chatter cadence per team while the match runs, rolled between the two.
+AiPlayerbot.DCHinterland.Chatter.IdleSecondsMin = 70
+AiPlayerbot.DCHinterland.Chatter.IdleSecondsMax = 160
+
+# Percent chance a bot comments on a player kill it landed, and on its own death
+# at a player's hands. Rolled before the limiters above, not instead of them.
+AiPlayerbot.DCHinterland.Chatter.KillChance = 25
+AiPlayerbot.DCHinterland.Chatter.DeathChance = 18
+
+# Calls for help: percent chance per team per sweep that one bot below the
+# health threshold asks for it.
+AiPlayerbot.DCHinterland.Chatter.HelpChance = 30
+AiPlayerbot.DCHinterland.Chatter.HelpHealthPct = 30
+
+# Callouts as a side's resource pool drops through 50% / 25% / 10% of what it
+# started the match with. HLBG is a resource drain, so this is the only running
+# commentary the scoreboard offers.
+AiPlayerbot.DCHinterland.Chatter.ResourceCalls = 1
+
+# Battleground chat is team-only, so an enemy standing over the corpse sees
+# nothing. These are the percent chances that a kill line is ALSO repeated in
+# local /say (in the bot's racial language, so the other side gets the same
+# garbled text a real player's taunt would), and that the bot plays a one-shot
+# emote. Set both to 0 for battleground chat only.
+AiPlayerbot.DCHinterland.Chatter.SayChance = 15
+AiPlayerbot.DCHinterland.Chatter.EmoteChance = 35
+
 ###############################################################################
 # DARK CHAOS - BOT COSMETICS
 #

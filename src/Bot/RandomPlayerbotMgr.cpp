@@ -592,22 +592,11 @@ void RandomPlayerbotMgr::AssignAccountTypes()
         }
     }
 
-    // Calculate needed RNDbot accounts
-    uint32 neededRndBotAccounts = 0;
-    if (sPlayerbotAIConfig.maxRandomBots > 0)
-    {
-        int divisor = RandomPlayerbotFactory::CalculateAvailableCharsPerAccount();
-        int maxBots = sPlayerbotAIConfig.maxRandomBots;
-
-        // Take periodic online-offline into account
-        if (sPlayerbotAIConfig.enablePeriodicOnlineOffline)
-        {
-            maxBots *= sPlayerbotAIConfig.periodicOnlineOfflineRatio;
-        }
-
-        // Calculate base accounts needed for RNDbots, ensuring round up for maxBots not cleanly divisible by the divisor
-        neededRndBotAccounts = (maxBots + divisor - 1) / divisor;
-    }
+    // Calculate needed RNDbot accounts, including the character slots held by retired bots
+    uint32 neededRndBotAccounts = RandomPlayerbotFactory::CalculateNeededRndBotAccounts();
+    if (uint32 retired = RandomPlayerbotFactory::CountRetiredRandomBots())
+        LOG_INFO("playerbots", "{} retired random bots still hold character slots; RNDbot account pool sized to {}",
+                 retired, neededRndBotAccounts);
 
     // Count existing assigned accounts
     uint32 existingRndBotAccounts = 0;
@@ -2374,38 +2363,62 @@ std::vector<uint32> RandomPlayerbotMgr::GetBgBots(uint32 bracket)
     return BgBots;
 }
 
+// Loads a bot's stored events the first time they are needed.
+//
+// Bot AI reads this cache from the map update threads - several at once (IsSpecPvp from
+// ItemUsageValue and TrainerAction, PlayerbotFactory from the maintenance actions) - while it was an
+// unguarded unordered_map. Concurrent inserts rehash it under a reader, which can loop forever or
+// crash, and the first read of every bot happens right after startup. The query runs without the
+// lock so a slow database round trip does not stall the other map threads; a result that lost the
+// race to another loader or to SetEventValue is dropped.
+void RandomPlayerbotMgr::LoadEventCache(uint32 bot)
+{
+    {
+        std::lock_guard<std::mutex> lock(_eventCacheMutex);
+        auto const itr = eventCache.find(bot);
+        if (itr != eventCache.end() && itr->second.loaded)
+            return;
+    }
+
+    std::unordered_map<std::string, CachedEvent> events;
+
+    PlayerbotsDatabasePreparedStatement* stmt =
+        PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_SEL_RANDOM_BOTS_BY_OWNER_AND_BOT);
+    stmt->SetData(0, 0);
+    stmt->SetData(1, bot);
+
+    if (PreparedQueryResult result = PlayerbotsDatabase.Query(stmt))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+
+            CachedEvent e;
+            e.value = fields[1].Get<uint32>();
+            e.lastChangeTime = fields[2].Get<uint32>();
+            e.validIn = fields[3].Get<uint32>();
+            e.data = fields[4].Get<std::string>();
+
+            events.emplace(fields[0].Get<std::string>(), std::move(e));
+        } while (result->NextRow());
+    }
+
+    std::lock_guard<std::mutex> lock(_eventCacheMutex);
+    BotEventCache& cache = eventCache[bot];
+    if (cache.loaded)
+        return;
+
+    cache.events = std::move(events);
+    cache.loaded = true;
+}
+
 CachedEvent* RandomPlayerbotMgr::FindEvent(uint32 bot, std::string const& event)
 {
-    BotEventCache& cache = eventCache[bot];
+    auto const cacheItr = eventCache.find(bot);
+    if (cacheItr == eventCache.end())
+        return nullptr;
 
-    // Load once
-    if (!cache.loaded)
-    {
-        cache.events.clear();
-
-        PlayerbotsDatabasePreparedStatement* stmt =
-            PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_SEL_RANDOM_BOTS_BY_OWNER_AND_BOT);
-        stmt->SetData(0, 0);
-        stmt->SetData(1, bot);
-
-        if (PreparedQueryResult result = PlayerbotsDatabase.Query(stmt))
-        {
-            do
-            {
-                Field* fields = result->Fetch();
-
-                CachedEvent e;
-                e.value = fields[1].Get<uint32>();
-                e.lastChangeTime = fields[2].Get<uint32>();
-                e.validIn = fields[3].Get<uint32>();
-                e.data = fields[4].Get<std::string>();
-
-                cache.events.emplace(fields[0].Get<std::string>(), std::move(e));
-            } while (result->NextRow());
-        }
-
-        cache.loaded = true;
-    }
+    BotEventCache& cache = cacheItr->second;
 
     auto it = cache.events.find(event);
     if (it == cache.events.end())
@@ -2435,6 +2448,9 @@ bool RandomPlayerbotMgr::IsSpecPvp(uint32 bot, uint8 cls)
 
 uint32 RandomPlayerbotMgr::GetEventValue(uint32 bot, std::string const& event)
 {
+    LoadEventCache(bot);
+
+    std::lock_guard<std::mutex> lock(_eventCacheMutex);
     if (CachedEvent* e = FindEvent(bot, event))
         return e->value;
 
@@ -2443,6 +2459,9 @@ uint32 RandomPlayerbotMgr::GetEventValue(uint32 bot, std::string const& event)
 
 std::string RandomPlayerbotMgr::GetEventData(uint32 bot, std::string const& event)
 {
+    LoadEventCache(bot);
+
+    std::lock_guard<std::mutex> lock(_eventCacheMutex);
     if (CachedEvent* e = FindEvent(bot, event))
         return e->data;
 
@@ -2452,6 +2471,9 @@ std::string RandomPlayerbotMgr::GetEventData(uint32 bot, std::string const& even
 uint32 RandomPlayerbotMgr::SetEventValue(uint32 bot, std::string const& event, uint32 value, uint32 validIn,
                                          std::string const& data)
 {
+    // Load before writing: marking a never-read bot as loaded would hide its other stored events.
+    LoadEventCache(bot);
+
     PlayerbotsDatabaseTransaction trans = PlayerbotsDatabase.BeginTransaction();
 
     PlayerbotsDatabasePreparedStatement* stmt =
@@ -2482,6 +2504,7 @@ uint32 RandomPlayerbotMgr::SetEventValue(uint32 bot, std::string const& event, u
     PlayerbotsDatabase.CommitTransaction(trans);
 
     // Update in-memory cache
+    std::lock_guard<std::mutex> lock(_eventCacheMutex);
     BotEventCache& cache = eventCache[bot];
     cache.loaded = true;
 
@@ -2538,7 +2561,10 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* /*handler*/,
     if (cmd == "reset")
     {
         PlayerbotsDatabase.Execute(PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_DEL_RANDOM_BOTS));
-        sRandomPlayerbotMgr.eventCache.clear();
+        {
+            std::lock_guard<std::mutex> lock(sRandomPlayerbotMgr._eventCacheMutex);
+            sRandomPlayerbotMgr.eventCache.clear();
+        }
         LOG_INFO("playerbots", "Random bots were reset for all players. Please restart the Server.");
         return true;
     }
@@ -3200,8 +3226,10 @@ void RandomPlayerbotMgr::Remove(Player* bot)
     stmt->SetData(1, owner.GetCounter());
     PlayerbotsDatabase.Execute(stmt);
 
-    uint32 botId = owner.GetCounter();
-    eventCache.erase(botId);
+    {
+        std::lock_guard<std::mutex> lock(_eventCacheMutex);
+        eventCache.erase(owner.GetCounter());
+    }
 
     LogoutPlayerBot(owner);
 }

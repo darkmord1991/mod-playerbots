@@ -65,9 +65,29 @@ private:
     // under "dc hlbg objective". Returns false when no target could be picked.
     bool SelectObjective();
 
+    // Progress watchdog. True when the bot has been outside its objective's
+    // arrival radius without covering any ground for the configured window,
+    // i.e. it is wedged rather than holding position. Escalates to a teleport
+    // back to the team's staging area after repeated strikes, and reports both
+    // to DCHinterlandMonitor.
+    bool IsStalled();
+    void NoteProgress();
+
     // Per-bot, because the action object is created once per bot AI context.
     uint32 _lastPickMs = 0;
     uint32 _repickIntervalMs = 0;
+
+    // Watchdog state. _lastTickMs separates "has not moved" from "has not been
+    // asked to move": the action does not run while the bot is in combat, dead
+    // or mid-teleport, and coming back from any of those must not read as a
+    // stall.
+    float _lastX = 0.0f;
+    float _lastY = 0.0f;
+    float _lastZ = 0.0f;
+    bool _hasLastPos = false;
+    uint32 _lastProgressMs = 0;
+    uint32 _lastTickMs = 0;
+    uint32 _stallStrikes = 0;
 };
 
 class DCHinterlandResetObjectiveAction : public Action
