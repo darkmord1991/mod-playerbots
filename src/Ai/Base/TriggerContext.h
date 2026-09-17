@@ -8,6 +8,8 @@
 #define PLAYERBOTS_TRIGGERCONTEXT_H
 
 #include "CureTriggers.h"
+#include "DCHinterlandTactics.h"  // DarkChaos
+#include "DCMythicRunActions.h"  // DarkChaos
 #include "FishingTriggers.h"
 #include "GenericTriggers.h"
 #include "GuildTriggers.h"
@@ -94,6 +96,10 @@ public:
         creators["not dps aoe target active"] = &TriggerContext::not_dps_aoe_target_active;
         creators["has nearest adds"] = &TriggerContext::has_nearest_adds;
         creators["enemy player near"] = &TriggerContext::enemy_player_near;
+        // DarkChaos: per-tick variant for Hinterland BG, see DCHinterlandTactics.h
+        creators["dc hlbg enemy near"] = &TriggerContext::dc_hlbg_enemy_near;
+        // DarkChaos: the tank of a bot-only Mythic+ run, see DCMythicRunActions.h
+        creators["dc mythic lead"] = &TriggerContext::dc_mythic_lead;
 
         creators["tank assist"] = &TriggerContext::TankAssist;
         creators["lose aggro"] = &TriggerContext::LoseAggro;
@@ -346,6 +352,8 @@ private:
     static Trigger* not_dps_aoe_target_active(PlayerbotAI* botAI) { return new NotDpsAoeTargetActiveTrigger(botAI); }
     static Trigger* has_nearest_adds(PlayerbotAI* botAI) { return new HasNearestAddsTrigger(botAI); }
     static Trigger* enemy_player_near(PlayerbotAI* botAI) { return new EnemyPlayerNear(botAI); }
+    static Trigger* dc_hlbg_enemy_near(PlayerbotAI* botAI) { return new DCHinterlandEnemyNearTrigger(botAI); }
+    static Trigger* dc_mythic_lead(PlayerbotAI* botAI) { return new DCMythicLeadTrigger(botAI); }
     static Trigger* Random(PlayerbotAI* botAI) { return new RandomTrigger(botAI, "random", 20); }
     static Trigger* seldom(PlayerbotAI* botAI) { return new RandomTrigger(botAI, "seldom", 300); }
     static Trigger* often(PlayerbotAI* botAI) { return new RandomTrigger(botAI, "often", 5); }

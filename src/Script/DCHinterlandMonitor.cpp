@@ -29,6 +29,7 @@
 #include "PlayerbotAI.h"
 #include "PlayerbotMgr.h"
 
+#include "DCHinterlandFront.h"
 #include "DCHinterlandGeography.h"
 #include "DCHinterlandTactics.h"
 
@@ -114,6 +115,15 @@ namespace
         uint32 deaths = 0;
         uint32 stalls = 0;
         uint32 teleports = 0;
+        // Where the team's attackers are being sent (DCHinterlandFront).
+        char const* frontName = "";
+        uint32 frontIndex = 0;
+        uint32 frontHeldSeconds = 0;
+        uint32 frontClearVotes = 0;
+        uint32 frontPresent = 0;
+        uint32 frontQuorum = 0;
+        uint32 frontKills = 0;
+        uint32 frontDeaths = 0;
     };
 
     struct MatchSnapshot
@@ -260,6 +270,16 @@ namespace
             sample.deaths = monitor.deaths[teamId];
             sample.stalls = monitor.stalls[teamId];
             sample.teleports = monitor.teleports[teamId];
+
+            DCHinterlandFront::View const front = DCHinterlandFront::Get(bg->GetInstanceID(), TeamId(teamId), now);
+            sample.frontName = front.name;
+            sample.frontIndex = front.index;
+            sample.frontHeldSeconds = front.heldSeconds;
+            sample.frontClearVotes = front.clearVotes;
+            sample.frontPresent = front.presentNear;
+            sample.frontQuorum = front.quorum;
+            sample.frontKills = front.recentKillsNear;
+            sample.frontDeaths = front.recentDeathsNear;
         }
 
         monitor.snapshot = std::move(snapshot);
@@ -277,10 +297,13 @@ namespace
 
         LOG_INFO("playerbots.hlbg",
                  "{} {:<8} res {:>5} ({:+5}) | bots {:>2} ({} alive, {} fighting, {} moving) | away {}% avg {:.0f}y "
-                 "| kills {} deaths {} | stalls {} teleports {} | players {}",
+                 "| front {}/{} {} ({}s, {} clear votes, {}/{} present, K/D there {}/{}) | kills {} deaths {} "
+                 "| stalls {} teleports {} | players {}",
                  prefix, TeamName(teamId), sample.resources, sample.resourceDelta, sample.bots, sample.alive,
-                 sample.inCombat, sample.moving, awayPct, sample.avgDistFromBase, sample.kills, sample.deaths,
-                 sample.stalls, sample.teleports, sample.realPlayers);
+                 sample.inCombat, sample.moving, awayPct, sample.avgDistFromBase, sample.frontIndex + 1,
+                 DCHinterlandFront::LaneLength(), sample.frontName, sample.frontHeldSeconds, sample.frontClearVotes,
+                 sample.frontPresent, sample.frontQuorum, sample.frontKills, sample.frontDeaths, sample.kills,
+                 sample.deaths, sample.stalls, sample.teleports, sample.realPlayers);
     }
 
     void Report(MatchMonitor& monitor, char const* prefix)
@@ -356,6 +379,10 @@ namespace
             if (killerTeam == killedTeam)
                 return;
 
+            // Outside this script's own lock: the front has its own.
+            DCHinterlandFront::NoteKill(bg->GetInstanceID(), killerTeam, killedTeam, killed->GetPositionX(),
+                                        killed->GetPositionY(), getMSTime());
+
             std::lock_guard<std::mutex> guard(s_mutex);
             MatchMonitor& monitor = s_matches[bg->GetInstanceID()];
 
@@ -384,6 +411,10 @@ namespace
                 return;
 
             uint32 const now = getMSTime();
+
+            // A fresh lane for a fresh match: the instance id can outlive a
+            // warmup restart, and the state must not.
+            DCHinterlandFront::Forget(bg->GetInstanceID());
 
             std::lock_guard<std::mutex> guard(s_mutex);
             MatchMonitor& monitor = s_matches[bg->GetInstanceID()];
@@ -460,6 +491,8 @@ namespace
         {
             if (!bg)
                 return;
+
+            DCHinterlandFront::Forget(bg->GetInstanceID());
 
             std::lock_guard<std::mutex> guard(s_mutex);
             s_matches.erase(bg->GetInstanceID());
@@ -558,10 +591,14 @@ namespace DCHinterlandMonitor
 
                 handler->PSendSysMessage(
                     "  {}: {} res ({:+}), {} bots ({} alive, {} fighting, {} moving), {}% away, avg {:.0f}y from base, "
-                    "{} kills / {} deaths, {} stalls, {} teleports, {} real players",
+                    "front {}/{} {} ({}s, {} clear votes, {}/{} present, K/D there {}/{}), {} kills / {} deaths, "
+                    "{} stalls, {} teleports, {} real players",
                     TeamName(TeamId(teamId)), sample.resources, sample.resourceDelta, sample.bots, sample.alive,
-                    sample.inCombat, sample.moving, awayPct, sample.avgDistFromBase, sample.kills, sample.deaths,
-                    sample.stalls, sample.teleports, sample.realPlayers);
+                    sample.inCombat, sample.moving, awayPct, sample.avgDistFromBase, sample.frontIndex + 1,
+                    DCHinterlandFront::LaneLength(), sample.frontName, sample.frontHeldSeconds,
+                    sample.frontClearVotes, sample.frontPresent, sample.frontQuorum, sample.frontKills,
+                    sample.frontDeaths, sample.kills, sample.deaths, sample.stalls, sample.teleports,
+                    sample.realPlayers);
             }
 
             if (snapshot.stalled.empty())

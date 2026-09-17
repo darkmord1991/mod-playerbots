@@ -256,12 +256,14 @@ public:
     std::string randomBotAutoJoinAVBrackets;
     std::string randomBotAutoJoinABBrackets;
     std::string randomBotAutoJoinWSBrackets;
+    std::string randomBotAutoJoinHLBGBrackets;  // DarkChaos: Hinterland BG
 
     uint32 randomBotAutoJoinBGICCount;
     uint32 randomBotAutoJoinBGEYCount;
     uint32 randomBotAutoJoinBGAVCount;
     uint32 randomBotAutoJoinBGABCount;
     uint32 randomBotAutoJoinBGWSCount;
+    uint32 randomBotAutoJoinBGHLBGCount;  // DarkChaos: Hinterland BG
 
     uint32 randomBotAutoJoinArenaBracket;
 

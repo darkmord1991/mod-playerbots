@@ -13,6 +13,7 @@
 #include "GridDefines.h"
 #include "PlayerbotAIConfig.h"
 #include <boost/functional/hash.hpp>
+#include <iterator>
 #include <map>
 #include <random>
 
@@ -881,7 +882,10 @@ public:
     std::vector<WorldLocation> GetCityLocations(Player* bot);
     std::vector<uint32> GetFlightNodesInZone(uint32 zoneId, TeamId team, uint32 excludeNode = 0) const;
     bool SelectAuctioneerByMap(Player* bot, NpcLocation& outAuctioneer);
-    std::vector<WorldLocation> const& GetLocsPerLevelCache(uint8 level) { return locsPerLevelCache[level]; }
+    std::vector<WorldLocation> const& GetLocsPerLevelCache(uint8 level) const
+    {
+        return GetLevelCacheEntry(locsPerLevelCache, level);
+    }
 
     template <class D, class W, class URBG>
     void weighted_shuffle(D first, D last, W first_weight, W last_weight, URBG&& g)
@@ -991,6 +995,22 @@ private:
         uint32 entry;
     };
 
+    // The per-level caches only hold the levels their destinations were built for: every zone bracket
+    // ends at 80, while MaxPlayerLevel on this server is higher and bots keep levelling past it. A level
+    // above the highest filled entry reads that entry, so an out-levelled bot still gets the top-bracket
+    // hubs and grind spots instead of none. Lookups never insert: the caches are shared by every map
+    // update thread once Init() has built them.
+    template <class T>
+    static std::vector<T> const& GetLevelCacheEntry(std::map<uint8, std::vector<T>> const& cache, uint8 level)
+    {
+        static std::vector<T> const empty;
+        for (auto itr = std::make_reverse_iterator(cache.upper_bound(level)); itr != cache.rend(); ++itr)
+            if (!itr->second.empty())
+                return itr->second;
+
+        return empty;
+    }
+
     // Navigation caches
     std::map<uint32, FlightMasterInfo> allianceFlightMasterCache;
     std::map<uint32, FlightMasterInfo> hordeFlightMasterCache;
@@ -1001,6 +1021,7 @@ private:
     std::map<uint8, std::vector<WorldLocation>> locsPerLevelCache;
     std::unordered_map<uint32, std::vector<WorldLocation>> creatureSpawnsByTemplate;
     std::map<uint32, LevelBracket> zone2LevelBracket;
+    uint32 maxBracketLevel = 0;  // highest LevelBracket::high in zone2LevelBracket
 };
 
 #define sTravelMgr TravelMgr::instance()

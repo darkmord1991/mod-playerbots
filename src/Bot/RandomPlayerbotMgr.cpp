@@ -14,6 +14,7 @@
 #include "ChannelMgr.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
+#include "DCHinterlandTactics.h"  // DarkChaos
 #include "DatabaseEnv.h"
 #include "Define.h"
 #include "FleeManager.h"
@@ -1168,12 +1169,15 @@ void RandomPlayerbotMgr::CheckBgQueue()
         uint32 randomBotAutoJoinBGAVCount = sPlayerbotAIConfig.randomBotAutoJoinBGAVCount;
         uint32 randomBotAutoJoinBGABCount = sPlayerbotAIConfig.randomBotAutoJoinBGABCount;
         uint32 randomBotAutoJoinBGWSCount = sPlayerbotAIConfig.randomBotAutoJoinBGWSCount;
+        uint32 randomBotAutoJoinBGHLBGCount = sPlayerbotAIConfig.randomBotAutoJoinBGHLBGCount;  // DarkChaos
 
         std::vector<uint32> icBrackets = parseBrackets(sPlayerbotAIConfig.randomBotAutoJoinICBrackets);
         std::vector<uint32> eyBrackets = parseBrackets(sPlayerbotAIConfig.randomBotAutoJoinEYBrackets);
         std::vector<uint32> avBrackets = parseBrackets(sPlayerbotAIConfig.randomBotAutoJoinAVBrackets);
         std::vector<uint32> abBrackets = parseBrackets(sPlayerbotAIConfig.randomBotAutoJoinABBrackets);
         std::vector<uint32> wsBrackets = parseBrackets(sPlayerbotAIConfig.randomBotAutoJoinWSBrackets);
+        // DarkChaos: Hinterland BG
+        std::vector<uint32> hlbgBrackets = parseBrackets(sPlayerbotAIConfig.randomBotAutoJoinHLBGBrackets);
 
         // Check both bgInstanceCount / bgInstances.size
         // to help counter against potentional inconsistencies
@@ -1192,7 +1196,26 @@ void RandomPlayerbotMgr::CheckBgQueue()
                 if (BattlegroundData[queueType][bracket].activeBgQueue == 0 &&
                     BattlegroundData[queueType][bracket].bgInstanceCount < minCount &&
                     BattlegroundData[queueType][bracket].bgInstances.size() < minCount)
+                {
                     BattlegroundData[queueType][bracket].activeBgQueue = 1;
+
+                    // DarkChaos: the level range is otherwise only filled in from a player or bot already
+                    // in the queue, and LogBattlegroundInfo skips brackets without one - so a queue opened
+                    // here for nobody never showed up in the log as "Active Queue: 1".
+                    if (BattlegroundData[queueType][bracket].minLevel == 0)
+                    {
+                        BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(BattlegroundQueueTypeId(queueType));
+                        Battleground* bgTemplate = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId);
+                        PvPDifficultyEntry const* pvpDiff = bgTemplate
+                            ? GetBattlegroundBracketById(bgTemplate->GetMapId(), BattlegroundBracketId(bracket))
+                            : nullptr;
+                        if (pvpDiff)
+                        {
+                            BattlegroundData[queueType][bracket].minLevel = pvpDiff->minLevel;
+                            BattlegroundData[queueType][bracket].maxLevel = pvpDiff->maxLevel;
+                        }
+                    }
+                }
             }
         };
 
@@ -1210,6 +1233,14 @@ void RandomPlayerbotMgr::CheckBgQueue()
         updateBGInstanceCount(BATTLEGROUND_QUEUE_AV, avBrackets, randomBotAutoJoinBGAVCount);
         updateBGInstanceCount(BATTLEGROUND_QUEUE_AB, abBrackets, randomBotAutoJoinBGABCount);
         updateBGInstanceCount(BATTLEGROUND_QUEUE_WS, wsBrackets, randomBotAutoJoinBGWSCount);
+
+        // DarkChaos: Hinterland BG. Its queue type has no SharedDefines enumerator, and BATTLEGROUND_QUEUE_HLBG is
+        // defined in the scripts library, which modules do not link - so resolve it through the core's own
+        // battleground-to-queue table (queue type 14). Count 0 (the default) leaves the queue untouched.
+        BattlegroundQueueTypeId const hlbgQueueTypeId =
+            BattlegroundMgr::BGQueueTypeId(BattlegroundTypeId(DC_BATTLEGROUND_HLBG_TYPE_ID), 0);
+        if (hlbgQueueTypeId != BATTLEGROUND_QUEUE_NONE)
+            updateBGInstanceCount(hlbgQueueTypeId, hlbgBrackets, randomBotAutoJoinBGHLBGCount);
     }
 
     LogBattlegroundInfo();
@@ -1269,6 +1300,10 @@ void RandomPlayerbotMgr::LogBattlegroundInfo()
                 break;
             case BATTLEGROUND_IC:
                 _bgType = "IoC";
+                break;
+            // DarkChaos: Hinterland BG has no BattlegroundTypeId enumerator, see DCHinterlandTactics.h
+            case BattlegroundTypeId(DC_BATTLEGROUND_HLBG_TYPE_ID):
+                _bgType = "HLBG";
                 break;
             default:
                 _bgType = "Other";

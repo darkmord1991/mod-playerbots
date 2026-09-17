@@ -60,6 +60,7 @@ namespace DCHinterland
         Point ownCamp;
         Point ownLine;
         Point ownStaging;
+        Point ownBoss;
         Point enemyCamp;
         Point enemyLine;
         Point enemyBoss;
@@ -68,9 +69,11 @@ namespace DCHinterland
     inline SideView GetSideView(TeamId teamId)
     {
         if (teamId == TEAM_ALLIANCE)
-            return { ALLIANCE_CAMP, ALLIANCE_LINE, ALLIANCE_STAGING, HORDE_CAMP, HORDE_LINE, HORDE_BOSS };
+            return { ALLIANCE_CAMP, ALLIANCE_LINE, ALLIANCE_STAGING, ALLIANCE_BOSS,
+                     HORDE_CAMP,    HORDE_LINE,    HORDE_BOSS };
 
-        return { HORDE_CAMP, HORDE_LINE, HORDE_STAGING, ALLIANCE_CAMP, ALLIANCE_LINE, ALLIANCE_BOSS };
+        return { HORDE_CAMP,    HORDE_LINE,    HORDE_STAGING, HORDE_BOSS,
+                 ALLIANCE_CAMP, ALLIANCE_LINE, ALLIANCE_BOSS };
     }
 
     // Everything a bot can sensibly name out loud. The two staging areas are in

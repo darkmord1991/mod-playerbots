@@ -1680,6 +1680,7 @@ AiPlayerbot.RandomBotAutoJoinBG = 0
 #   - Alterac Valley   (AV): 0=51-60, 1=61-70, 2=71-79, 3=80                                        (Default: 3)
 #   - Eye of the Storm (EY): 0=61-69, 1=70-79, 2=80                                                 (Default: 2)
 #   - Isle of Conquest (IC): 0=71-79, 1=80                                                          (Default: 1)
+#   - Hinterland BG  (HLBG): 0=71-80 (battleground_template admits level 80+ only)                  (Default: 0)
 # - Multiple BG brackets can be specified as a comma-separated list (e.g., "0,2,5"). Not applicable for Rated Arena.
 #   - Rated Arena:           0=10-14, 1=15-19, 2=20-24, ..., 13=75-79, 14=80-84                     (Default: 14)
 #
@@ -1690,6 +1691,14 @@ AiPlayerbot.RandomBotAutoJoinBG = 0
 #   - RandomBotAutoJoinBGWSCount = 1
 #   - These configs would create two battles, one for bracket 6 and one for bracket 7.
 # - Ensure there are enough eligible bots to meet the specified counts.
+#
+# Hinterland BG (Dark Chaos custom, map 1411):
+# - Off by default (RandomBotAutoJoinBGHLBGCount = 0): bots then only fill an HLBG queue a real player opened.
+# - It has a single bracket, 0. The PvPDifficulty range is 71-80, but battleground_template starts at level 80,
+#   and every level above 80 falls into that same bracket, so any bot of level 80 or higher is eligible.
+# - Count N keeps N matches going: while fewer than N HLBG instances hold bots, a queue is opened and bots of
+#   each faction queue until that side has MaxPlayersPerTeam (10) queued or inside. That takes up to 20 level
+#   80+ bots per match, and matches already running are topped back up the same way.
 
 # Battleground bracket range possibilities:
 # AiPlayerbot.RandomBotAutoJoinWSBrackets = 0,1,2,3,4,5,6,7
@@ -1697,11 +1706,13 @@ AiPlayerbot.RandomBotAutoJoinBG = 0
 # AiPlayerbot.RandomBotAutoJoinAVBrackets = 0,1,2,3
 # AiPlayerbot.RandomBotAutoJoinEYBrackets = 0,1,2
 # AiPlayerbot.RandomBotAutoJoinICBrackets = 0,1
+# AiPlayerbot.RandomBotAutoJoinHLBGBrackets = 0
 AiPlayerbot.RandomBotAutoJoinWSBrackets = 7
 AiPlayerbot.RandomBotAutoJoinABBrackets = 6
 AiPlayerbot.RandomBotAutoJoinAVBrackets = 3
 AiPlayerbot.RandomBotAutoJoinEYBrackets = 2
 AiPlayerbot.RandomBotAutoJoinICBrackets = 1
+AiPlayerbot.RandomBotAutoJoinHLBGBrackets = 0
 
 # Battlegrounds battles count (per bracket):
 AiPlayerbot.RandomBotAutoJoinBGWSCount = 1
@@ -1709,6 +1720,7 @@ AiPlayerbot.RandomBotAutoJoinBGABCount = 1
 AiPlayerbot.RandomBotAutoJoinBGAVCount = 0
 AiPlayerbot.RandomBotAutoJoinBGEYCount = 1
 AiPlayerbot.RandomBotAutoJoinBGICCount = 0
+AiPlayerbot.RandomBotAutoJoinBGHLBGCount = 0
 
 # Arena bracket (single bracket only):
 # Custom code changes are required for lower-level arena brackets to function properly.
@@ -2815,11 +2827,18 @@ AiPlayerbot.DCItemUpgrade.CurrencyReserve = 0
 # DARK CHAOS - HINTERLAND BG
 #
 # Hinterland BG is a DC custom battleground (BattlegroundTypeId 20, queue type
-# 14, map 1411). The queue side needs no configuration: the core registers it
-# in BattlegroundMgr's queue tables, so the ordinary bot BG scan picks it up and
-# AiPlayerbot.RandomBotJoinBG governs it like any other bracket. Bots fill the
-# HLBG queue once a real player is queued for it, up to MaxPlayersPerTeam (10)
-# a side.
+# 14, map 1411). The core registers it in BattlegroundMgr's queue tables, so the
+# ordinary bot BG scan picks it up and AiPlayerbot.RandomBotJoinBG governs it
+# like any other bracket. By default bots only fill an HLBG queue once a real
+# player is queued for it, up to MaxPlayersPerTeam (10) a side.
+#
+# To let bots start HLBG matches on their own, set AiPlayerbot.RandomBotAutoJoinBG
+# = 1 and raise AiPlayerbot.RandomBotAutoJoinBGHLBGCount above 0 (both in the
+# BATTLEGROUNDS & ARENAS & PVP section; it is 0, i.e. off, by default). HLBG has
+# one bracket, 0 (AiPlayerbot.RandomBotAutoJoinHLBGBrackets = 0). Its PvPDifficulty
+# range is 71-80, but battleground_template starts at level 80, so only bots of
+# level 80 or higher take part. Auto-join, like every other battleground, waits
+# until all random bots have logged in.
 #
 # What this block controls is what a bot does after the port. HLBG has no
 # flags, no capturable nodes and no graveyard ownership -- both teams start
@@ -2847,12 +2866,79 @@ AiPlayerbot.DCHinterland.RepickSecondsMax = 90
 # next one.
 AiPlayerbot.DCHinterland.ArrivalDistance = 18.0
 
-# Yards at which a live enemy player outranks the current destination: the bot
-# stops steering and lets the combat engine take the fight. Raising this makes
-# bots abandon objectives for PvP more eagerly - at 45 a bot in a crowded
-# midfield never reached a guard camp at all, and NPC kills were ~7% of all
-# resource drain.
-AiPlayerbot.DCHinterland.EngageDistance = 18.0
+# Yards at which a bot starts on an enemy player it can see. This replaces the
+# stock battleground figure of 40 - and the stock rule that halves it to 20
+# whenever the bot's raw health is below the target's, which in a 40-a-side
+# match is true for about half of every team and is how two full rosters ran
+# past each other in parallel without a fight. 60 is the open-world value.
+AiPlayerbot.DCHinterland.EngageDistance = 60.0
+
+# ---------------------------------------------------------------------------
+# HLBG front line
+#
+# Attackers do not roam. Every attacker on a team heads for the same node of a
+# lane that runs from the team's own line, through both midfield outposts, to
+# the enemy line, the enemy camp and finally the enemy faction boss - so they
+# arrive together, clear the node together, and only then push on. The lane
+# advances once enough bots standing on the node have reported it clear of
+# hostiles for a few seconds, and falls back one node when nobody alive has
+# been near it for a while, which is what a wipe looks like: the respawn
+# trickle regathers a step closer to home instead of feeding in one at a time.
+#
+# The monitor's `front` column shows where each team's lane currently points.
+# ---------------------------------------------------------------------------
+
+# How many of the ten "bg role" values (rolled once per match) stay home to
+# hold the team's own camp and line instead of joining the push. 2 = 20% of
+# the roster.
+AiPlayerbot.DCHinterland.Front.DefenderRoles = 2
+
+# Yards around a node within which a living hostile - enemy guard or enemy
+# player - keeps it "contested".
+AiPlayerbot.DCHinterland.Front.NodeRadius = 45.0
+
+# Distinct bots that must report the node clear, and for how long it has to
+# stay clear, before the lane advances.
+AiPlayerbot.DCHinterland.Front.AdvanceVotes = 3
+AiPlayerbot.DCHinterland.Front.HoldSeconds = 10
+
+# A clear report older than this no longer counts as a vote.
+AiPlayerbot.DCHinterland.Front.VoteWindowSeconds = 6
+
+# Share of the team's living attackers that must be near the node before the
+# lane leaves it, so the group moves as one. Without it the first three
+# arrivals at the own line voted it clear at once and the lane ran three nodes
+# ahead of the roster in under a minute. If the quorum has not shown up after
+# three hold windows the lane goes anyway, so a depleted team is never stuck.
+AiPlayerbot.DCHinterland.Front.AdvanceQuorumPct = 50
+
+# Yards around the front node within which living teammates count as present.
+AiPlayerbot.DCHinterland.Front.PresenceRadius = 60.0
+
+# The node counts as held while at least this many living teammates are near
+# it. Below that for RegroupSeconds the lane falls back one node. The
+# threshold matters: with "anyone at all" a single respawner walking up every
+# twenty seconds kept a wiped team from ever regrouping, and it fed itself
+# back into the enemy blob one bot at a time for the rest of the match. The
+# lane gets a fresh RegroupSeconds of grace after every move, which covers
+# the walk up to the new node.
+AiPlayerbot.DCHinterland.Front.MinPresence = 3
+AiPlayerbot.DCHinterland.Front.RegroupSeconds = 45
+
+# The losing signal. MinPresence alone was not enough: the battleground
+# releases its dead in waves every 30 s, and three to five bots running up
+# together were enough to reset the retreat timer each time - a wiped team
+# kept feeding a contested node for the rest of the match. Now a node also
+# stops counting as held while, over the window, the team's deaths near it
+# outnumber its kills there two to one (and reach LosingMinDeaths) and fewer
+# than the advance quorum are present. The monitor's `K/D there` shows both.
+AiPlayerbot.DCHinterland.Front.LosingWindowSeconds = 60
+AiPlayerbot.DCHinterland.Front.LosingMinDeaths = 6
+
+# Defenders patrol the team's own line, camp and boss: seconds they hold each
+# point before moving to another, rolled between the two.
+AiPlayerbot.DCHinterland.Front.DefenderDwellMin = 20
+AiPlayerbot.DCHinterland.Front.DefenderDwellMax = 40
 
 # ---------------------------------------------------------------------------
 # HLBG stuck-bot watchdog
@@ -2975,6 +3061,77 @@ AiPlayerbot.DCHinterland.Chatter.SayChance = 15
 AiPlayerbot.DCHinterland.Chatter.EmoteChance = 35
 
 ###############################################################################
+# DARK CHAOS - BOT DUNGEON AND MYTHIC+ RUNS
+#
+# Two GM commands recruit five idle random bots of one faction - a tank, a
+# healer and three damage dealers, none with a lockout on the dungeon - put
+# them in a group led by the tank, send the tank into a fresh instance and the
+# others after it:
+#
+# `.playerbots mplus start [mapId] [keystoneLevel]` sets Mythic difficulty and
+# starts a keystone run with no keystone item and no ready check. The run
+# counts and pays out like any other (records, best times, tokens, loot,
+# keystone upgrade); the Group Finder's Spectate tab lists it with the leader
+# shown as "BOT <name>".
+#
+# `.playerbots dungeon start [mapId] [normal|heroic]` runs the dungeon at that
+# difficulty without a keystone. The bosses are the dungeon's encounters
+# (instance_encounters), so a map needs creature-credited rows for the chosen
+# difficulty. Once every encounter is done the bots get 30 seconds to loot.
+# The Spectate tab lists it under Dungeons (tagged NM/HC, leader "BOT <name>").
+#
+# Inside, the tank waits until everyone is alive, close and rested, pulls the
+# nearest hostile it can see within PullRange, and otherwise walks toward the
+# next boss the run still needs. The others follow the tank and fight through
+# their ordinary assist and heal strategies. When the run is over, or a
+# watchdog gives up on it, the group is disbanded and every bot is sent back to
+# where it was recruited. `.playerbots mplus status` / `.playerbots dungeon
+# status` show progress and `stop` ends every bot run.
+#
+# Each bot entering counts toward the core's 5-instances-per-hour limit, so
+# repeated test runs can run out of eligible bots for an hour.
+###############################################################################
+
+AiPlayerbot.DCMythicBots.Enable = 1
+
+# Comma-separated map ids a bot run - keyed or not - may be started on. The
+# first is the default for both start commands. 574 = Utgarde Keep.
+AiPlayerbot.DCMythicBots.Dungeons = 574
+
+AiPlayerbot.DCMythicBots.MaxConcurrentRuns = 1
+AiPlayerbot.DCMythicBots.BotLevel = 80
+
+# `.playerbots mplus start` only.
+AiPlayerbot.DCMythicBots.MaxKeystoneLevel = 10
+
+# Seconds the tank, and then the rest of the group, may take to arrive.
+AiPlayerbot.DCMythicBots.EnterTimeoutSeconds = 90
+
+# Pause after everyone arrived before the keystone starts or the tank moves off.
+AiPlayerbot.DCMythicBots.StartDelaySeconds = 3
+
+# Watchdog: give up when nobody fights, no boss dies and the tank does not move
+# for this many seconds, or when the timer has run this many minutes. 0 = off.
+AiPlayerbot.DCMythicBots.StuckSeconds = 180
+AiPlayerbot.DCMythicBots.MaxRunMinutes = 45
+
+# The tank pulls the nearest visible hostile within this many yards.
+AiPlayerbot.DCMythicBots.PullRange = 30
+
+# The tank waits until every member is within this range and above these
+# health and mana percentages.
+AiPlayerbot.DCMythicBots.RegroupDistance = 40
+AiPlayerbot.DCMythicBots.RestHealthPct = 60
+AiPlayerbot.DCMythicBots.RestManaPct = 50
+
+# `.playerbots dungeon start` only (a keystone run has its own death rules).
+# Once nobody has fought for 10 seconds, revive dead bots beside the tank and
+# bring back members that ended up outside the instance (released to the
+# graveyard, revived at a spirit healer). With 0 a death usually ends the run
+# through the StuckSeconds watchdog.
+AiPlayerbot.DCMythicBots.ReviveDeadBots = 1
+
+###############################################################################
 # DARK CHAOS - BOT COSMETICS
 #
 # Purely visual variety for bots: mounts drawn from the whole DC mount catalog,
@@ -3016,6 +3173,11 @@ AiPlayerbot.DCCosmetics.Companions.Enable = 1
 
 # Percentage of bots that carry a companion at all.
 AiPlayerbot.DCCosmetics.Companions.Chance = 35
+
+# Whether bots keep (and re-summon) their companion inside battlegrounds and
+# arenas. Off: a companion that survives the port in is dismissed on entry and
+# none is summoned until the bot is back outside. Class pets are not affected.
+AiPlayerbot.DCCosmetics.Companions.InBattlegrounds = 0
 
 # Re-skin bot warlock minions from acore_playerbots.playerbots_demon_skins and
 # bot hunter pets from the curated acore_world.dc_beastmaster_pets roster.

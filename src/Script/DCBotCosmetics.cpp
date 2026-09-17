@@ -39,6 +39,7 @@
 #include "DBCStores.h"
 #include "DatabaseEnv.h"
 #include "Log.h"
+#include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Pet.h"
 #include "Player.h"
@@ -66,6 +67,7 @@ namespace
         uint32 mountMaxSpellId   = 0;
         bool   companions        = true;
         uint32 companionChance   = 35;
+        bool   companionsInBg    = false;
         bool   petSkins          = true;
         uint32 hunterSkinChance  = 70;
         float  maxPetScale       = 1.6f;
@@ -82,6 +84,8 @@ namespace
         s_cfg.mountMaxSpellId  = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCCosmetics.Mounts.MaxSpellId", 0);
         s_cfg.companions       = sConfigMgr->GetOption<bool>("AiPlayerbot.DCCosmetics.Companions.Enable", true);
         s_cfg.companionChance  = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCCosmetics.Companions.Chance", 35);
+        s_cfg.companionsInBg   =
+            sConfigMgr->GetOption<bool>("AiPlayerbot.DCCosmetics.Companions.InBattlegrounds", false);
         s_cfg.petSkins         = sConfigMgr->GetOption<bool>("AiPlayerbot.DCCosmetics.PetSkins.Enable", true);
         s_cfg.hunterSkinChance = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCCosmetics.PetSkins.HunterChance", 70);
         s_cfg.maxPetScale      = sConfigMgr->GetOption<float>("AiPlayerbot.DCCosmetics.PetSkins.MaxScale", 1.6f);
@@ -446,8 +450,30 @@ namespace
         if (!bot->GetCritterGUID().IsEmpty())
             return;
 
+        // A battleground is forty bots in one place already; forty companions
+        // on top is clutter nobody asked for, and the zone-change hook below
+        // would otherwise re-summon one right after the port in.
+        if (!s_cfg.companionsInBg && (bot->InBattleground() || bot->InArena()))
+            return;
+
         if (uint32 spellId = CompanionSpellFor(bot))
             bot->CastSpell(bot, spellId, true);
+    }
+
+    // Sends a companion that survived the port into a battleground home. Class
+    // pets are untouched: they are combat, not cosmetics.
+    void DismissCompanion(Player* bot)
+    {
+        if (bot->GetCritterGUID().IsEmpty())
+            return;
+
+        Creature* critter = ObjectAccessor::GetCreature(*bot, bot->GetCritterGUID());
+        if (!critter)
+            return;
+
+        // Companions are TempSummons; DespawnOrUnsummon routes them through
+        // UnSummon, which also clears the owner's critter slot.
+        critter->DespawnOrUnsummon();
     }
 
     // ------------------------------------------------------------------------
@@ -598,6 +624,22 @@ namespace
         }
     };
 
+    class DCBotCosmeticsBattlegroundScript : public AllBattlegroundScript
+    {
+    public:
+        DCBotCosmeticsBattlegroundScript()
+            : AllBattlegroundScript("DCBotCosmeticsBattlegroundScript",
+                                    { ALLBATTLEGROUNDHOOK_ON_BATTLEGROUND_ADD_PLAYER }) {}
+
+        void OnBattlegroundAddPlayer(Battleground* /*bg*/, Player* player) override
+        {
+            if (!s_cfg.enabled || s_cfg.companionsInBg || !IsBot(player))
+                return;
+
+            DismissCompanion(player);
+        }
+    };
+
     class DCBotCosmeticsPetScript : public PetScript
     {
     public:
@@ -618,5 +660,6 @@ void AddSC_dc_bot_cosmetics()
 {
     new DCBotCosmeticsWorldScript();
     new DCBotCosmeticsPlayerScript();
+    new DCBotCosmeticsBattlegroundScript();
     new DCBotCosmeticsPetScript();
 }

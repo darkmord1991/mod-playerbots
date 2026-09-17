@@ -24,6 +24,7 @@ bool MoveFromWhirlwindAction::Execute(Event /*event*/)
 
             break;
         case DUNGEON_DIFFICULTY_HEROIC:
+        case DUNGEON_DIFFICULTY_EPIC: // DarkChaos Mythic spawns the heroic creatures
             if (faction == TEAM_ALLIANCE)
                 boss = AI_VALUE2(Unit*, "find target", "commander kolurg");
 

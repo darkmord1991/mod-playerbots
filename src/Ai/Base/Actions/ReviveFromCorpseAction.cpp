@@ -11,6 +11,7 @@
 #include "Event.h"
 #include "FleeManager.h"
 #include "GameGraveyard.h"
+#include "GameTime.h"
 #include "MapMgr.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
@@ -61,8 +62,30 @@ bool ReviveFromCorpseAction::Execute(Event event)
             return botAI->DoSpecificAction("spirit healer");
     }
 
-    LOG_DEBUG("playerbots", "Bot {} {}:{} <{}> revives at body", bot->GetGUID().ToString().c_str(),
-              bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName().c_str());
+    // Mirror the checks WorldSession::HandleReclaimCorpseOpcode makes, because it drops a request that
+    // fails them without telling anyone. The "corpse near" trigger fires as soon as the ghost is inside
+    // CORPSE_RECLAIM_RADIUS, which is normally well before the corpse reclaim delay (30/60/120s) has run
+    // out. Sending the reclaim anyway logged "revives at body" and re-ran on every AI tick until the delay
+    // expired: up to ~100 attempts for one death.
+    if (bot->IsAlive() || bot->InArena() || !bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+        return false;
+
+    if (!corpse->IsInMap(bot) || !corpse->IsWithinDist(bot, CORPSE_RECLAIM_RADIUS, true))
+        return false;
+
+    time_t const reclaimTime =
+        corpse->GetGhostTime() + bot->GetCorpseReclaimDelay(corpse->GetType() == CORPSE_RESURRECTABLE_PVP);
+    time_t const now = GameTime::GetGameTime().count();
+    if (reclaimTime > now)
+    {
+        // The bot is where it wants to revive and only has to wait. Keep claiming the tick so lower
+        // priority movement (follow, return to stay position) cannot walk the ghost off its body, as the
+        // old every-tick reclaim did, but check back no sooner than needed. The cap keeps it responsive
+        // to a resurrect offer or to mobs wandering onto the corpse in the meantime.
+        constexpr uint32 MAX_RECLAIM_WAIT_MS = 5 * IN_MILLISECONDS;
+        botAI->SetNextCheckDelay(std::min<uint32>(uint32(reclaimTime - now) * IN_MILLISECONDS, MAX_RECLAIM_WAIT_MS));
+        return true;
+    }
 
     bot->GetMotionMaster()->Clear();
     bot->StopMoving();
@@ -70,6 +93,13 @@ bool ReviveFromCorpseAction::Execute(Event event)
     WorldPacket packet(CMSG_RECLAIM_CORPSE);
     packet << bot->GetGUID();
     bot->GetSession()->HandleReclaimCorpseOpcode(packet);
+
+    // The handler can still refuse (e.g. a script vetoing the resurrect); only report a real revive.
+    if (!bot->IsAlive())
+        return false;
+
+    LOG_DEBUG("playerbots", "Bot {} {}:{} <{}> revives at body", bot->GetGUID().ToString().c_str(),
+              bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName().c_str());
 
     return true;
 }

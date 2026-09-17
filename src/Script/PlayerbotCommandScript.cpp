@@ -6,6 +6,7 @@
 
 #include "BattleGroundTactics.h"
 #include "Chat.h"
+#include "DCBotMythicRun.h"
 #include "DCHinterlandMonitor.h"
 #include "GuildTaskMgr.h"
 #include "PerfMonitor.h"
@@ -36,6 +37,21 @@ public:
             {"unlink", HandleUnlinkAccountCommand, SEC_PLAYER, Console::No},
         };
 
+        // DarkChaos: bot-only Mythic+ runs, see DCBotMythicRun.h
+        static ChatCommandTable playerbotsMythicCommandTable = {
+            {"start", HandleMythicStartCommand, SEC_GAMEMASTER, Console::Yes},
+            {"stop", HandleMythicStopCommand, SEC_GAMEMASTER, Console::Yes},
+            {"status", HandleMythicStatusCommand, SEC_GAMEMASTER, Console::Yes},
+        };
+
+        // DarkChaos: bot-only Normal/Heroic dungeon runs - the same runner without
+        // a keystone. stop and status cover every bot run, keyed or not.
+        static ChatCommandTable playerbotsDungeonCommandTable = {
+            {"start", HandleDungeonStartCommand, SEC_GAMEMASTER, Console::Yes},
+            {"stop", HandleMythicStopCommand, SEC_GAMEMASTER, Console::Yes},
+            {"status", HandleMythicStatusCommand, SEC_GAMEMASTER, Console::Yes},
+        };
+
         static ChatCommandTable playerbotsCommandTable = {
             {"bot", HandlePlayerbotCommand, SEC_PLAYER, Console::No},
             {"gtask", HandleGuildTaskCommand, SEC_GAMEMASTER, Console::Yes},
@@ -43,6 +59,8 @@ public:
             {"rndbot", HandleRandomPlayerbotCommand, SEC_GAMEMASTER, Console::Yes},
         {"status", HandlePlayerbotStatusCommand, SEC_GAMEMASTER, Console::Yes},
             {"hlbg", HandleHinterlandMonitorCommand, SEC_GAMEMASTER, Console::Yes},
+            {"mplus", playerbotsMythicCommandTable},
+            {"dungeon", playerbotsDungeonCommandTable},
             {"debug", playerbotsDebugCommandTable},
             {"account", playerbotsAccountCommandTable},
         };
@@ -179,6 +197,30 @@ public:
     static bool HandleHinterlandMonitorCommand(ChatHandler* handler, char const* args)
     {
         return DCHinterlandMonitor::HandleStatusCommand(handler, args);
+    }
+
+    // `.playerbots mplus start [mapId] [keystoneLevel]` recruits five bots and
+    // runs a keystone with them; `stop` ends every bot run; `status` lists them.
+    static bool HandleMythicStartCommand(ChatHandler* handler, char const* args)
+    {
+        return DCBotMythicRun::HandleStartCommand(handler, args);
+    }
+
+    // `.playerbots dungeon start [mapId] [normal|heroic]` does the same without a
+    // keystone.
+    static bool HandleDungeonStartCommand(ChatHandler* handler, char const* args)
+    {
+        return DCBotMythicRun::HandleDungeonStartCommand(handler, args);
+    }
+
+    static bool HandleMythicStopCommand(ChatHandler* handler, char const* args)
+    {
+        return DCBotMythicRun::HandleStopCommand(handler, args);
+    }
+
+    static bool HandleMythicStatusCommand(ChatHandler* handler, char const* args)
+    {
+        return DCBotMythicRun::HandleStatusCommand(handler, args);
     }
 
     static bool HandleSetSecurityKeyCommand(ChatHandler* handler, char const* args)

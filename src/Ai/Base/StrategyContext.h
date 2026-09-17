@@ -32,6 +32,7 @@
 #include "LfgStrategy.h"
 #include "LootNonCombatStrategy.h"
 #include "DCHinterlandStrategy.h"  // DarkChaos
+#include "DCMythicRunStrategy.h"  // DarkChaos
 #include "DCItemUpgradeStrategy.h"  // DarkChaos
 #include "MaintenanceStrategy.h"
 #include "MarkRtiStrategy.h"
@@ -113,6 +114,7 @@ public:
         creators["eye"] = &StrategyContext::eye;
         creators["isle"] = &StrategyContext::isle;
         creators["dc hinterland"] = &StrategyContext::dc_hinterland;  // DarkChaos
+        creators["dc mythic"] = &StrategyContext::dc_mythic;  // DarkChaos
         creators["arena"] = &StrategyContext::arena;
         creators["mount"] = &StrategyContext::mount;
         creators["rtsc"] = &StrategyContext::rtsc;
@@ -191,6 +193,7 @@ private:
     static Strategy* eye(PlayerbotAI* botAI) { return new EyeStrategy(botAI); }
     static Strategy* isle(PlayerbotAI* botAI) { return new IsleStrategy(botAI); }
     static Strategy* dc_hinterland(PlayerbotAI* botAI) { return new DCHinterlandStrategy(botAI); }  // DarkChaos
+    static Strategy* dc_mythic(PlayerbotAI* botAI) { return new DCMythicRunStrategy(botAI); }  // DarkChaos
     static Strategy* arena(PlayerbotAI* botAI) { return new ArenaStrategy(botAI); }
     static Strategy* rtsc(PlayerbotAI* botAI) { return new RTSCStrategy(botAI); }
     static Strategy* attack_tagged(PlayerbotAI* botAI) { return new AttackTaggedStrategy(botAI); }

@@ -15,6 +15,32 @@
 #include "SpellMgr.h"
 #include "Util.h"
 
+namespace
+{
+// Mirrors the row lookup in Player::_ApplyItemBonuses: the wearer's level, clamped to the
+// distribution's MaxLevel, walking down to the nearest level the ScalingStatValues store has.
+ScalingStatValuesEntry const* FindScalingStatValues(ScalingStatDistributionEntry const* ssd, uint32 level)
+{
+    if (ssd && level > ssd->MaxLevel)
+        level = ssd->MaxLevel;
+
+    if (ScalingStatValuesEntry const* ssv = sScalingStatValuesStore.LookupEntry(level))
+        return ssv;
+
+    uint32 const rowCount = sScalingStatValuesStore.GetNumRows();
+    if (rowCount > 0 && level >= rowCount)
+        level = rowCount - 1;
+
+    for (; level > 0; --level)
+    {
+        if (ScalingStatValuesEntry const* ssv = sScalingStatValuesStore.LookupEntry(level))
+            return ssv;
+    }
+
+    return nullptr;
+}
+}
+
 StatsCollector::StatsCollector(CollectorType type, int32 cls) : type_(type), cls_(cls) { Reset(); }
 
 void StatsCollector::Reset()
@@ -25,25 +51,69 @@ void StatsCollector::Reset()
     }
 }
 
-void StatsCollector::CollectItemStats(ItemTemplate const* proto)
+void StatsCollector::CollectItemStats(ItemTemplate const* proto, uint32 level)
 {
-    if (proto->IsRangedWeapon())
+    // DarkChaos: heirlooms keep their real stats in ScalingStatDistribution / ScalingStatValues,
+    // not in the template, which holds placeholders or nothing at all. Read the template instead
+    // and a heirloom scores as nearly empty, loses to any green and is swapped out at the next
+    // re-gear. Resolved here exactly as the core applies them on equip (Player::_ApplyItemBonuses,
+    // Player::_ApplyWeaponDamage). Without a ScalingStatValue mask the core ignores the scaling
+    // tables, so such items -- and level 0 -- keep the template path.
+    ScalingStatDistributionEntry const* ssd = nullptr;
+    ScalingStatValuesEntry const* ssv = nullptr;
+    if (level && proto->ScalingStatValue)
     {
-        float val = (proto->Damage[0].DamageMin + proto->Damage[0].DamageMax) * 1000 / 2 / proto->Delay;
-        stats[STATS_TYPE_RANGED_DPS] += val;
+        if (proto->ScalingStatDistribution)
+            ssd = sScalingStatDistributionStore.LookupEntry(proto->ScalingStatDistribution);
+
+        ssv = FindScalingStatValues(ssd, level);
     }
-    else if (proto->IsWeapon())
+
+    if (proto->IsWeapon())
     {
-        float val = (proto->Damage[0].DamageMin + proto->Damage[0].DamageMax) * 1000 / 2 / proto->Delay;
-        stats[STATS_TYPE_MELEE_DPS] += val;
+        // A scaling weapon's damage range is centred on the level's dpsMod, so that is its DPS.
+        uint32 const scaledDps = ssv ? ssv->getDPSMod(proto->ScalingStatValue) : 0;
+        float val = scaledDps ? float(scaledDps)
+                              : (proto->Damage[0].DamageMin + proto->Damage[0].DamageMax) * 1000 / 2 / proto->Delay;
+        stats[proto->IsRangedWeapon() ? STATS_TYPE_RANGED_DPS : STATS_TYPE_MELEE_DPS] += val;
     }
-    stats[STATS_TYPE_ARMOR] += proto->Armor;
+
+    // An armor curve replaces the template armor; a mask with no armor bit keeps it.
+    uint32 armor = proto->Armor;
+    if (ssv)
+        if (uint32 const scaledArmor = ssv->getArmorMod(proto->ScalingStatValue))
+            armor = scaledArmor;
+
+    stats[STATS_TYPE_ARMOR] += armor;
     stats[STATS_TYPE_BLOCK_VALUE] += proto->Block;
-    for (uint32 i = 0; i < proto->StatsCount; i++)
+
+    if (ssv)
     {
-        _ItemStat const& stat = proto->ItemStat[i];
-        int32 const& val = stat.ItemStatValue;
-        CollectByItemStatType(stat.ItemStatType, val);
+        // The core takes a scaling item's stats from the distribution alone. With no distribution
+        // row the item applies no stats in game, so it scores none here either.
+        if (ssd)
+        {
+            uint32 const multiplier = ssv->getssdMultiplier(proto->ScalingStatValue);
+            for (uint8 i = 0; i < MAX_ITEM_PROTO_STATS; ++i)
+            {
+                if (ssd->StatMod[i] < 0)
+                    continue;
+
+                CollectByItemStatType(ssd->StatMod[i], int32(multiplier * ssd->Modifier[i] / 10000));
+            }
+        }
+
+        if (uint32 const spellPower = ssv->getSpellBonus(proto->ScalingStatValue))
+            CollectByItemStatType(ITEM_MOD_SPELL_POWER, int32(spellPower));
+    }
+    else
+    {
+        for (uint32 i = 0; i < proto->StatsCount; i++)
+        {
+            _ItemStat const& stat = proto->ItemStat[i];
+            int32 const& val = stat.ItemStatValue;
+            CollectByItemStatType(stat.ItemStatType, val);
+        }
     }
     for (uint8 j = 0; j < MAX_ITEM_PROTO_SPELLS; j++)
     {

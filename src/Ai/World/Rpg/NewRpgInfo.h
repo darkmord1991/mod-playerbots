@@ -76,6 +76,21 @@ struct NewRpgInfo
 
     uint32 startT{0};  // start timestamp of the current status
 
+    // A GO_GRIND or GO_CAMP destination search that found nothing, with where the bot stood when it ran.
+    // While the bot stays there at the same level the search cannot succeed, so the status update skips
+    // that status for a while instead of rescanning every destination on each status change.
+    struct SelectionFailure
+    {
+        uint32 failedAt{0};
+        uint32 mapId{0};
+        uint32 zoneId{0};
+        uint8 level{0};
+        float x{0.0f};
+        float y{0.0f};
+    };
+    SelectionFailure grindSelectionFailure;
+    SelectionFailure campSelectionFailure;
+
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};
     uint32 stuckTs{0};

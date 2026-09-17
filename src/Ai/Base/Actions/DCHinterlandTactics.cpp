@@ -4,6 +4,7 @@
 
 #include "DCHinterlandTactics.h"
 
+#include "DCHinterlandFront.h"
 #include "DCHinterlandGeography.h"
 #include "DCHinterlandMonitor.h"
 
@@ -22,10 +23,15 @@ namespace
         uint32 repickSecondsMin = 45;
         uint32 repickSecondsMax = 90;
         float arrivalDistance = 18.0f;
-        float engageDistance = 18.0f;
+        float engageDistance = 60.0f;
         uint32 stallSeconds = 20;
         float stallDistance = 3.0f;
         uint32 unstickTeleportStrikes = 3;
+        uint32 defenderRoles = 2;
+        float nodeRadius = 45.0f;
+        float presenceRadius = 60.0f;
+        uint32 defenderDwellMin = 20;
+        uint32 defenderDwellMax = 40;
     };
 
     HLBGConfig const& GetConfig()
@@ -40,14 +46,37 @@ namespace
             c.repickSecondsMin = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.RepickSecondsMin", 45);
             c.repickSecondsMax = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.RepickSecondsMax", 90);
             c.arrivalDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.ArrivalDistance", 18.0f);
-            c.engageDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.EngageDistance", 18.0f);
+            c.engageDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.EngageDistance", 60.0f);
             c.stallSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.StallSeconds", 20);
             c.stallDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.StallDistance", 3.0f);
             c.unstickTeleportStrikes =
                 sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.UnstickTeleportStrikes", 3);
+            c.defenderRoles = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.DefenderRoles", 2);
+            c.nodeRadius = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.Front.NodeRadius", 45.0f);
+            c.presenceRadius = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.Front.PresenceRadius", 60.0f);
+            c.defenderDwellMin = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.DefenderDwellMin", 20);
+            c.defenderDwellMax = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.DefenderDwellMax", 40);
 
             if (c.repickSecondsMax < c.repickSecondsMin)
                 c.repickSecondsMax = c.repickSecondsMin;
+            if (c.defenderDwellMax < c.defenderDwellMin)
+                c.defenderDwellMax = c.defenderDwellMin;
+
+            DCHinterlandFront::Config front;
+            front.advanceVotes = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.AdvanceVotes", 3);
+            front.holdSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.HoldSeconds", 10);
+            front.regroupSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.RegroupSeconds", 45);
+            front.voteWindowSeconds =
+                sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.VoteWindowSeconds", 6);
+            front.advanceQuorumPct =
+                sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.AdvanceQuorumPct", 50);
+            front.minPresence = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.MinPresence", 3);
+            front.defenderRoles = c.defenderRoles;
+            front.presenceRadius = c.presenceRadius;
+            front.losingWindowSeconds =
+                sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.LosingWindowSeconds", 60);
+            front.losingMinDeaths = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.LosingMinDeaths", 6);
+            DCHinterlandFront::SetConfig(front);
 
             return c;
         }();
@@ -67,6 +96,8 @@ bool DCHinterlandTacticsAction::IsInHinterlandBG(Player* player)
 
     return bg->GetBgTypeID(true) == BattlegroundTypeId(DC_BATTLEGROUND_HLBG_TYPE_ID);
 }
+
+float DCHinterlandTacticsAction::GetEngageDistance() { return GetConfig().engageDistance; }
 
 bool DCHinterlandTacticsAction::isUseful()
 {
@@ -113,57 +144,63 @@ bool DCHinterlandTacticsAction::MoveToStaging()
                   side.ownStaging.z);
 }
 
-bool DCHinterlandTacticsAction::SelectObjective()
+bool DCHinterlandTacticsAction::IsDefender()
 {
-    DCHinterland::SideView const side = DCHinterland::GetSideView(bot->GetBgTeamId());
-
     // "bg role" is rolled 0-9 when the bot accepts the battleground port. It is
     // set for every battleground type, HLBG included, so it is free to reuse as
-    // a stable per-match disposition instead of re-rolling one here.
-    uint32 const role = AI_VALUE(uint32, "bg role");
+    // a stable per-match disposition instead of re-rolling one here. The lowest
+    // DefenderRoles values stay home: HLBG drains resources when a team's own
+    // guards and boss die, so somebody has to, or the camp is free to farm.
+    return AI_VALUE(uint32, "bg role") < GetConfig().defenderRoles;
+}
 
-    auto rollTarget = [&side, role]() -> DCHinterland::Point
-    {
-        if (role <= 1)
-        {
-            // Home defence. HLBG drains resources when a team's own guards and
-            // boss die, so somebody has to stay back or the camp is free to farm.
-            return urand(0, 1) ? side.ownCamp : side.ownLine;
-        }
-
-        if (role <= 6)
-        {
-            // Midfield. The two mixed outposts are where both infantry lines
-            // meet, which is where the player kills happen.
-            return urand(0, 1) ? DCHinterland::MID_CENTER : DCHinterland::MID_NORTH;
-        }
-
-        // Offence: push the enemy camp, and occasionally go for the boss, which
-        // is worth 200 resources against the 5 a normal guard is worth.
-        uint32 const roll = urand(0, 2);
-        return roll == 0 ? side.enemyBoss : (roll == 1 ? side.enemyCamp : side.enemyLine);
-    };
-
-    // A roll that lands where the bot already stands is a wasted cycle: it would
-    // hold the same spot until the next expiry, and a bot that never moves is
-    // what the battleground's AFK sweep exists to remove. A bounded retry is
-    // enough - the buckets a role can draw from are far enough apart that one or
-    // two rolls almost always move it.
-    float const rerollRadius = GetConfig().arrivalDistance * 2.0f;
-    DCHinterland::Point target = rollTarget();
-    for (uint32 attempt = 0; attempt < 3; ++attempt)
-    {
-        if (!bot->IsWithinDist3d(target.x, target.y, target.z, rerollRadius))
-            break;
-
-        target = rollTarget();
-    }
-
+bool DCHinterlandTacticsAction::SelectObjective()
+{
     Battleground* bg = bot->GetBattleground();
     if (!bg)
         return false;
 
-    // The jitter spreads bots out so a camp does not become a stack of bodies
+    HLBGConfig const& cfg = GetConfig();
+    TeamId const teamId = bot->GetBgTeamId();
+    DCHinterland::Point target = DCHinterland::MID_CENTER;
+    float jitter = 8.0f;
+    uint32 dwellMin = cfg.repickSecondsMin;
+    uint32 dwellMax = cfg.repickSecondsMax;
+
+    if (IsDefender())
+    {
+        DCHinterland::SideView const side = DCHinterland::GetSideView(teamId);
+
+        // Patrol the three home points rather than park on one. Eight
+        // defenders standing in a sixteen-yard square at the camp for a minute
+        // at a time was what the "stuck at the Horde base" screenshot showed,
+        // and it was them doing their job. Wider spread, shorter dwell, and
+        // never the point the bot is already standing on.
+        DCHinterland::Point const home[] = { side.ownLine, side.ownCamp, side.ownBoss };
+        uint32 pick = urand(0, 2);
+        for (uint32 attempt = 0; attempt < 3; ++attempt)
+        {
+            if (!bot->IsWithinDist3d(home[pick].x, home[pick].y, home[pick].z, cfg.arrivalDistance * 2.0f))
+                break;
+
+            pick = (pick + 1) % 3;
+        }
+
+        target = home[pick];
+        jitter = 14.0f;
+        dwellMin = cfg.defenderDwellMin;
+        dwellMax = cfg.defenderDwellMax;
+        _objectiveIsFront = false;
+    }
+    else
+    {
+        DCHinterlandFront::View const front = DCHinterlandFront::Get(bg->GetInstanceID(), teamId, getMSTime());
+        target = DCHinterlandFront::LaneNode(teamId, front.index);
+        _frontRevision = front.revision;
+        _objectiveIsFront = true;
+    }
+
+    // The jitter spreads bots out so a node does not become a stack of bodies
     // on one coordinate, but it moves x and y only, and the table's z belongs to
     // the unjittered point. On the Alliance side, which is flat ground, that is
     // harmless. On the Horde side it is not: the Revantusk village sits on a
@@ -173,8 +210,8 @@ bool DCHinterlandTacticsAction::SelectObjective()
     // nothing - for the whole 45-90s the bot had committed to that target.
     // Snapping z to whatever is actually walkable under the jittered x/y is what
     // makes the target reachable in the first place.
-    float targetX = target.x + frand(-8.0f, 8.0f);
-    float targetY = target.y + frand(-8.0f, 8.0f);
+    float targetX = target.x + frand(-jitter, jitter);
+    float targetY = target.y + frand(-jitter, jitter);
     float targetZ = target.z;
     bot->UpdateAllowedPositionZ(targetX, targetY, targetZ);
 
@@ -183,10 +220,77 @@ bool DCHinterlandTacticsAction::SelectObjective()
     objective.Set(targetX, targetY, targetZ, bg->GetMapId());
     posMap[DC_HLBG_OBJECTIVE_KEY] = objective;
 
-    HLBGConfig const& cfg = GetConfig();
     _lastPickMs = getMSTime();
-    _repickIntervalMs = urand(cfg.repickSecondsMin, cfg.repickSecondsMax) * IN_MILLISECONDS;
+    _repickIntervalMs = urand(dwellMin, dwellMax) * IN_MILLISECONDS;
     return true;
+}
+
+void DCHinterlandTacticsAction::ReportNodeState(DCHinterland::Point const& node)
+{
+    Battleground* bg = bot->GetBattleground();
+    if (!bg)
+        return;
+
+    HLBGConfig const& cfg = GetConfig();
+
+    // "possible targets" is everything hostile the bot could attack within
+    // sight distance, players and creatures alike, LOS ignored - the enemy
+    // guards at an outpost and any enemy player sitting on it both count, own
+    // guards do not. Filtered by distance to the node rather than to the bot,
+    // so a bot standing on the far edge of the node still speaks for it.
+    bool nodeClear = true;
+    GuidVector const hostiles = AI_VALUE(GuidVector, "possible targets");
+    for (ObjectGuid const& guid : hostiles)
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        if (!unit || !unit->IsAlive())
+            continue;
+
+        if (unit->GetExactDist2d(node.x, node.y) <= cfg.nodeRadius)
+        {
+            nodeClear = false;
+            break;
+        }
+    }
+
+    DCHinterlandFront::ReportAtNode(bg->GetInstanceID(), bot->GetBgTeamId(), bot->GetGUID().GetRawValue(),
+                                    nodeClear, getMSTime());
+}
+
+void DCHinterlandTacticsAction::ReportPresence(DCHinterland::Point const& node)
+{
+    Battleground* bg = bot->GetBattleground();
+    if (!bg)
+        return;
+
+    uint32 const now = getMSTime();
+    if (_lastPresenceMs && (now - _lastPresenceMs) < 2 * IN_MILLISECONDS)
+        return;
+
+    _lastPresenceMs = now;
+
+    // Living teammates - bots and real players - near the node, including the
+    // ones mid-fight on it, who cannot report for themselves because this
+    // action does not run in combat. The front gets a grace period after every
+    // move for the group to walk up, so the radius does not have to cover the
+    // approach as well.
+    HLBGConfig const& cfg = GetConfig();
+    TeamId const teamId = bot->GetBgTeamId();
+    uint32 aliveNear = 0;
+    uint32 aliveTeam = 0;
+
+    for (auto const& itr : bg->GetPlayers())
+    {
+        Player* player = itr.second;
+        if (!player || !player->IsAlive() || player->GetBgTeamId() != teamId)
+            continue;
+
+        ++aliveTeam;
+        if (player->GetExactDist2d(node.x, node.y) <= cfg.presenceRadius)
+            ++aliveNear;
+    }
+
+    DCHinterlandFront::ReportPresence(bg->GetInstanceID(), teamId, aliveNear, aliveTeam, now);
 }
 
 bool DCHinterlandTacticsAction::MoveToObjective()
@@ -197,15 +301,27 @@ bool DCHinterlandTacticsAction::MoveToObjective()
 
     HLBGConfig const& cfg = GetConfig();
 
-    // An enemy player in reach outranks any waypoint: stop steering and let the
-    // combat engine pick the target. Without this the bot walks past a fight to
-    // reach a coordinate.
-    GuidVector const enemies = AI_VALUE(GuidVector, "nearest enemy players");
-    for (ObjectGuid const& guid : enemies)
+    TeamId const teamId = bot->GetBgTeamId();
+    uint32 const now = getMSTime();
+    DCHinterlandFront::View const front = DCHinterlandFront::Get(bg->GetInstanceID(), teamId, now);
+    DCHinterland::Point const node = DCHinterlandFront::LaneNode(teamId, front.index);
+
+    // Before anything that can return early. The retreat decision lives in
+    // this report, and during a losing fight nearly every attacker out of
+    // combat has an enemy in sight - putting the report after the enemy
+    // check below starved the front of reports exactly when it needed them,
+    // and a wiped team sat on a contested node for minutes.
+    if (!IsDefender())
+        ReportPresence(node);
+
+    // An enemy player in sight outranks any waypoint. "attack enemy player"
+    // fires ahead of this action whenever this value resolves; the only way to
+    // get here with it set is that the attack could not start - no line of
+    // sight, usually - so close the distance instead of walking past.
+    if (Unit* enemy = AI_VALUE(Unit*, "enemy player target"))
     {
-        Unit* enemy = botAI->GetUnit(guid);
-        if (enemy && enemy->IsAlive() && bot->IsWithinDist(enemy, cfg.engageDistance, false))
-            return false;
+        if (enemy->IsAlive())
+            return MoveTo(bg->GetMapId(), enemy->GetPositionX(), enemy->GetPositionY(), enemy->GetPositionZ());
     }
 
     PositionMap& posMap = AI_VALUE(PositionMap&, "position");
@@ -213,10 +329,11 @@ bool DCHinterlandTacticsAction::MoveToObjective()
 
     // Unsigned arithmetic, so a getMSTime() wrap resolves the same way it does
     // everywhere else in the module.
-    bool const expired = _repickIntervalMs && (getMSTime() - _lastPickMs) >= _repickIntervalMs;
+    bool const expired = _repickIntervalMs && (now - _lastPickMs) >= _repickIntervalMs;
     bool const wrongMap = objective.isSet() && objective.mapId != bg->GetMapId();
+    bool const frontMoved = _objectiveIsFront && front.revision != _frontRevision;
 
-    if (!objective.isSet() || wrongMap || expired)
+    if (!objective.isSet() || wrongMap || expired || frontMoved)
     {
         if (!SelectObjective())
             return false;
@@ -230,11 +347,16 @@ bool DCHinterlandTacticsAction::MoveToObjective()
     // the 18 yard arrival test, so the bot arrived again on the very next tick
     // and rerolled again. For the two home-defence points, which sit ~46 yards
     // apart in the Horde base, that read as bots pacing back and forth and never
-    // leaving. The objective now only changes when the dwell timer expires.
+    // leaving. The objective only changes when the dwell timer expires or the
+    // front moves.
     if (bot->IsWithinDist3d(objective.x, objective.y, objective.z, cfg.arrivalDistance))
     {
         // Standing on the objective is the job, not a stall.
         NoteProgress();
+
+        if (_objectiveIsFront)
+            ReportNodeState(node);
+
         return false;
     }
 
@@ -337,4 +459,12 @@ bool DCHinterlandResetObjectiveAction::Execute(Event /*event*/)
     objective.Reset();
     posMap[DC_HLBG_OBJECTIVE_KEY] = objective;
     return true;
+}
+
+bool DCHinterlandEnemyNearTrigger::IsActive()
+{
+    if (!DCHinterlandTacticsAction::IsInHinterlandBG(bot))
+        return false;
+
+    return AI_VALUE(Unit*, "enemy player target") != nullptr;
 }

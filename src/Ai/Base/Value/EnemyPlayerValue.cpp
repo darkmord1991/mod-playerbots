@@ -6,6 +6,7 @@
 
 #include "EnemyPlayerValue.h"
 #include "CombatManager.h"
+#include "DCHinterlandTactics.h"  // DarkChaos
 #include "Playerbots.h"
 #include "ServerFacade.h"
 #include "Vehicle.h"
@@ -108,9 +109,15 @@ Unit* EnemyPlayerValue::Calculate()
 
         // Aggro weak enemies from further away.
         // If controlling mobile vehicle only agro close enemies (otherwise will never reach objective)
-        uint32 const aggroDistance = controllingVehicle                                               ? 5.0f
-                                     : (controllingCannon || bot->GetHealth() > pTarget->GetHealth()) ? maxAggroDistance
-                                                                                                      : 20.0f;
+        // DarkChaos: no such timidity in Hinterland BG. The health test compares raw
+        // pools, so in a 40-a-side match roughly half of every team is "weaker" than
+        // whoever it is looking at and would only start on enemies inside 20 yards -
+        // which is how two full teams ran past each other without a fight.
+        bool const inHinterland = DCHinterlandTacticsAction::IsInHinterlandBG(bot);
+        uint32 const aggroDistance = controllingVehicle ? 5.0f
+                                     : (controllingCannon || inHinterland || bot->GetHealth() > pTarget->GetHealth())
+                                         ? maxAggroDistance
+                                         : 20.0f;
         if (!bot->IsWithinDist(pTarget, aggroDistance))
             continue;
 
@@ -162,6 +169,11 @@ float EnemyPlayerValue::GetMaxAttackDistance()
         if (botAI->IsInVehicle(false, true))
             return 120.0f;
     }
+
+    // DarkChaos: Hinterland BG is an open-field deathmatch, not a flag map, so
+    // the engage range is the open-world one (AiPlayerbot.DCHinterland.EngageDistance).
+    if (bgType == BattlegroundTypeId(DC_BATTLEGROUND_HLBG_TYPE_ID))
+        return DCHinterlandTacticsAction::GetEngageDistance();
 
     return 40.0f;
 }

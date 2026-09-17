@@ -6,6 +6,7 @@
 
 #include "AiFactory.h"
 #include "BattlegroundMgr.h"
+#include "DCBotMythicRun.h"  // DarkChaos
 #include "DCHinterlandTactics.h"  // DarkChaos
 #include "DKAiObjectContext.h"
 #include "DruidAiObjectContext.h"
@@ -674,6 +675,20 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
     }
     else
         nonCombatEngine->ChangeStrategy(sPlayerbotAIConfig.nonCombatStrategies);
+
+    // DarkChaos: a bot-only Mythic+ run (DCBotMythicRun.h). The tank leads the
+    // group through "dc mythic", and nothing that would pull a bot out of the
+    // instance or the group may run beside it: grinding and rpg travel, queueing
+    // for battlegrounds or LFG, and duels (accepting one resets strategies).
+    // Decided here rather than with ChangeStrategy so every strategy reset
+    // rebuilds the same set.
+    if (DCBotMythicRun::IsManaged(player->GetGUID()))
+    {
+        nonCombatEngine->addStrategy("dc mythic", false);
+        for (char const* name : { "grind", "new rpg", "rpg", "move random", "travel", "bg", "lfg", "start duel",
+                 "duel", "quest", "gather" })
+            nonCombatEngine->removeStrategy(name, false);
+    }
 
     // Battleground switch
     if (player->InBattleground() && player->GetBattleground())

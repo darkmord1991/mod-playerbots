@@ -10,7 +10,9 @@
 #include "Common.h"
 #include <functional>
 #include <list>
+#include <mutex>
 #include <set>
+#include <shared_mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -160,7 +162,12 @@ public:
     using ObjectCreator = std::function<T*(PlayerbotAI* ai)>;
     std::unordered_map<std::string, ObjectCreator> const& creators;
     std::vector<NamedObjectContext<T>*> const& contexts;
+    // One bot's objects, but not only one thread's: bots also read and set other bots' values (group travel
+    // targets, "last said", item counts), and when the two bots are on different maps that access comes from
+    // another map update thread. A lookup that inserts while another thread walks this map corrupts it, and the
+    // next find() never returns - the world-thread freezes seen in AiObjectContext::GetUntypedValue.
     std::unordered_map<std::string, T*> created;
+    mutable std::shared_mutex createdLock;
 
     NamedObjectContextList(SharedNamedObjectContextList<T> const& shared)
         : creators(shared.creators), contexts(shared.contexts)
@@ -203,13 +210,24 @@ public:
 
     T* GetContextObject(std::string const& name, PlayerbotAI* botAI)
     {
-        if (created.find(name) == created.end())
         {
-            if (T* object = create(name, botAI))
-                return created[name] = object;
+            std::shared_lock<std::shared_mutex> lock(createdLock);
+            auto const itr = created.find(name);
+            if (itr != created.end())
+                return itr->second;
         }
 
-        return created[name];
+        // Built outside the lock: a creator may look up other objects of this same context, and the lock is not
+        // recursive. Objects are never removed before the list itself is destroyed, so the returned pointer
+        // stays valid after the lock is released.
+        T* object = create(name, botAI);
+
+        std::unique_lock<std::shared_mutex> lock(createdLock);
+        auto const [itr, inserted] = created.try_emplace(name, object);
+        if (!inserted)
+            delete object; // another thread created it first; nothing has seen this copy yet
+
+        return itr->second;
     }
 
     std::set<std::string> GetSiblings(std::string const& name)
@@ -246,6 +264,8 @@ public:
 
     std::set<std::string> GetCreated()
     {
+        std::shared_lock<std::shared_mutex> lock(createdLock);
+
         std::set<std::string> result;
         for (typename std::unordered_map<std::string, T*>::const_iterator i = created.begin(); i != created.end(); i++)
             result.insert(i->first);

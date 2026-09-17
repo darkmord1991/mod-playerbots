@@ -154,6 +154,7 @@ bool CastBlinkBackAction::Execute(Event event)
     if (!target)
         return false;
 
-    bot->SetOrientation(bot->GetAngle(target) + M_PI);
+    // GetAngle is already in [0, 2*pi): without normalising, the bot kept an orientation up to 3*pi.
+    bot->SetOrientation(Position::NormalizeOrientation(bot->GetAngle(target) + M_PI));
     return CastSpellAction::Execute(event);
 }

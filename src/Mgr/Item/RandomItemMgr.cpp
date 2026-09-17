@@ -8,6 +8,7 @@
 #include "DBCStores.h"
 #include "ItemTemplate.h"
 #include "Playerbots.h"
+#include <algorithm>
 
 std::unordered_set<uint32> RandomItemMgr::itemCache;
 
@@ -112,6 +113,7 @@ void RandomItemMgr::Init()
     // if (!LoadCacheEquip())
     //     BuildCacheEquip();
     BuildCacheEquipNew();
+    BuildHeirloomItemLevels();  // DarkChaos: reads equipCacheNew
     BuildCacheAmmo();
     BuildCacheFood();
     BuildCachePotion();
@@ -941,6 +943,11 @@ RandomItemList const& RandomItemMgr::GetEquipmentNew(uint32 level, InventoryType
         return empty;
 
     return typeItr->second;
+}
+
+uint32 RandomItemMgr::GetHeirloomItemLevel(uint32 level) const
+{
+    return m_heirloomItemLevel[NormalizeLevel(level)];
 }
 
 uint32 RandomItemMgr::GetRandomItem(uint32 level, RandomItemType type, RandomItemPredicate* predicate) const
@@ -2062,6 +2069,73 @@ void RandomItemMgr::BuildCacheEquipNew()
 
     LOG_INFO("server.loading", ">> Cached total {} equipment entries in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
     LOG_INFO("server.loading", " ");
+}
+
+// DarkChaos: a heirloom has no item level of its own -- the template holds a placeholder while the
+// stats follow the wearer's level. StatsWeightCalculator blends every item's score with its item
+// level, so a heirloom needs a stand-in or it loses to real gear on the blend alone. The stand-in is
+// what the heirloom actually competes with: the median item level of the rares
+// PlayerbotFactory::InitEquipment considers at that level (required levels level-9..level, its own
+// window). Taken from this cache rather than a formula because DC's item levels follow no curve past
+// 60 -- Cata/retail imports and custom tiers sit side by side.
+void RandomItemMgr::BuildHeirloomItemLevels()
+{
+    using ItemLevelsByLevel = std::array<std::vector<uint32>, DEFAULT_MAX_LEVEL + 1>;
+
+    ItemLevelsByLevel rareItemLevels;
+    ItemLevelsByLevel uncommonItemLevels;
+
+    for (auto const& [requiredLevel, itemsByType] : equipCacheNew)
+    {
+        if (requiredLevel > DEFAULT_MAX_LEVEL)
+            continue;
+
+        for (auto const& [_, items] : itemsByType)
+        {
+            for (uint32 const itemId : items)
+            {
+                ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+                if (!proto || !proto->ItemLevel)
+                    continue;
+
+                if (proto->Quality == ITEM_QUALITY_RARE)
+                    rareItemLevels[requiredLevel].push_back(proto->ItemLevel);
+                else if (proto->Quality == ITEM_QUALITY_UNCOMMON)
+                    uncommonItemLevels[requiredLevel].push_back(proto->ItemLevel);
+            }
+        }
+    }
+
+    auto windowMedian = [](ItemLevelsByLevel const& byLevel, uint32 level)
+    {
+        std::vector<uint32> window;
+        for (uint32 requiredLevel = level > 10 ? level - 9 : 1; requiredLevel <= level; ++requiredLevel)
+            window.insert(window.end(), byLevel[requiredLevel].begin(), byLevel[requiredLevel].end());
+
+        if (window.empty())
+            return uint32(0);
+
+        auto const middle = window.begin() + window.size() / 2;
+        std::nth_element(window.begin(), middle, window.end());
+        return *middle;
+    };
+
+    // Uncommons stand in where a level has no rares. Never below the level beneath: a sparse band must
+    // not make a heirloom look weaker as its wearer levels, and past the last item the top value holds.
+    uint32 itemLevel = 0;
+    for (uint32 level = 1; level <= DEFAULT_MAX_LEVEL; ++level)
+    {
+        uint32 median = windowMedian(rareItemLevels, level);
+        if (!median)
+            median = windowMedian(uncommonItemLevels, level);
+
+        itemLevel = std::max(itemLevel, median);
+        m_heirloomItemLevel[level] = itemLevel;
+    }
+
+    LOG_INFO("server.loading", ">> Heirloom item levels: L20 {}, L60 {}, L80 {}, L100 {}, L130 {}, L255 {}",
+        m_heirloomItemLevel[20], m_heirloomItemLevel[60], m_heirloomItemLevel[80], m_heirloomItemLevel[100],
+        m_heirloomItemLevel[130], m_heirloomItemLevel[255]);
 }
 
 void RandomItemMgr::BuildCacheItemInfo()

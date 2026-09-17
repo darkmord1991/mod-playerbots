@@ -97,7 +97,7 @@ float StatsWeightCalculator::CalculateItem(uint32 itemId, int32 randomPropertyId
 
     Reset();
 
-    collector_->CollectItemStats(proto);
+    collector_->CollectItemStats(proto, lvl);
 
     if (randomPropertyIds != 0)
         CalculateRandomProperty(randomPropertyIds, itemId);
@@ -120,13 +120,16 @@ float StatsWeightCalculator::CalculateItem(uint32 itemId, int32 randomPropertyId
 
     if (enable_quality_blend_)
     {
-        // Heirloom items scale with player level
-        // Use player level as effective item level for heirlooms - Quality EPIC
-        // Else - Blend with item quality and level for normal items
-        if (proto->Quality == ITEM_QUALITY_HEIRLOOM)
-            weight_ *= PlayerbotFactory::CalcMixedGearScore(lvl, ITEM_QUALITY_EPIC);
-        else
+        // Blend with item quality and level. DarkChaos: a heirloom's template item level is a
+        // placeholder, so it blends as a rare at the item level of the gear it competes with at the
+        // wearer's level (RandomItemMgr::BuildHeirloomItemLevels). Until that table exists it falls
+        // back to the wearer's level as an epic.
+        if (proto->Quality != ITEM_QUALITY_HEIRLOOM)
             weight_ *= PlayerbotFactory::CalcMixedGearScore(proto->ItemLevel, proto->Quality);
+        else if (uint32 const heirloomItemLevel = sRandomItemMgr.GetHeirloomItemLevel(lvl))
+            weight_ *= PlayerbotFactory::CalcMixedGearScore(heirloomItemLevel, ITEM_QUALITY_RARE);
+        else
+            weight_ *= PlayerbotFactory::CalcMixedGearScore(lvl, ITEM_QUALITY_EPIC);
     }
 
     // Apply weapon speed governance if slot is provided and this is a weapon

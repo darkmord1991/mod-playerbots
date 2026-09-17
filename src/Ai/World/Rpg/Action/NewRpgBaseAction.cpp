@@ -36,6 +36,8 @@
 #include "Timer.h"
 #include "TravelMgr.h"
 #include "G3D/Vector2.h"
+#include <algorithm>
+#include <utility>
 
 bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 {
@@ -961,6 +963,25 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
     return true;
 }
 
+namespace
+{
+    using DistanceAndLocation = std::pair<float, WorldLocation>;
+
+    // Candidates in a neighbouring zone are only used when the bot's own zone has none for its level, which
+    // happens where a zone split off a larger one (Tiragarde Keep inside Durotar is its own zone here) or
+    // where the bot has out-levelled its zone. Walking to one of the closest keeps that trip short.
+    WorldPosition SelectNearestLocation(std::vector<DistanceAndLocation>& candidates)
+    {
+        if (candidates.empty())
+            return WorldPosition();
+
+        size_t const pool = std::min<size_t>(candidates.size(), 3);
+        std::partial_sort(candidates.begin(), candidates.begin() + pool, candidates.end(),
+                          [](DistanceAndLocation const& a, DistanceAndLocation const& b) { return a.first < b.first; });
+        return WorldPosition(candidates[urand(0, static_cast<uint32>(pool - 1))].second);
+    }
+}
+
 WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
 {
     std::vector<WorldLocation> const& locs = sTravelMgr.GetLocsPerLevelCache(bot->GetLevel());
@@ -972,6 +993,7 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
         loRange /= 3;
     }
     std::vector<WorldLocation> lo_prepared_locs, hi_prepared_locs;
+    std::vector<DistanceAndLocation> otherZoneLocs;
 
     bool inCity = false;
     if (AreaTableEntry const* zone = sAreaTableStore.LookupEntry(bot->GetZoneId()))
@@ -985,22 +1007,22 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
         if (bot->GetMapId() != loc.GetMapId())
             continue;
 
-        if (bot->GetExactDist(loc) > 2500.0f)
+        // Nothing at or beyond loRange is ever picked, so skip it before the zone lookup below.
+        float const distance = bot->GetExactDist(loc);
+        if (distance >= loRange)
             continue;
 
         if (!inCity && bot->GetMap()->GetZoneId(bot->GetPhaseMask(), loc.GetPositionX(), loc.GetPositionY(),
                                                 loc.GetPositionZ()) != bot->GetZoneId())
+        {
+            otherZoneLocs.emplace_back(distance, loc);
             continue;
+        }
 
-        if (bot->GetExactDist(loc) < hiRange)
-        {
+        if (distance < hiRange)
             hi_prepared_locs.push_back(loc);
-        }
 
-        if (bot->GetExactDist(loc) < loRange)
-        {
-            lo_prepared_locs.push_back(loc);
-        }
+        lo_prepared_locs.push_back(loc);
     }
     WorldPosition dest{};
     if (urand(1, 100) <= 50 && !hi_prepared_locs.empty())
@@ -1013,9 +1035,21 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
         uint32 idx = urand(0, lo_prepared_locs.size() - 1);
         dest = lo_prepared_locs[idx];
     }
-    LOG_DEBUG("playerbots", "[New RPG] Bot {} select random grind pos Map:{} X:{} Y:{} Z:{} ({}+{} available in {})",
+    else
+        dest = SelectNearestLocation(otherZoneLocs);
+
+    if (dest == WorldPosition())
+    {
+        LOG_TRACE("playerbots", "[New RPG] Bot {} found no grind pos (level {}, map {}, zone {}, {} spots)",
+                  bot->GetName(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), locs.size());
+        return dest;
+    }
+
+    LOG_DEBUG("playerbots",
+              "[New RPG] Bot {} select random grind pos Map:{} X:{} Y:{} Z:{} ({}+{} available in {}, {} other zone)",
               bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
-              hi_prepared_locs.size(), lo_prepared_locs.size() - hi_prepared_locs.size(), locs.size());
+              hi_prepared_locs.size(), lo_prepared_locs.size() - hi_prepared_locs.size(), locs.size(),
+              otherZoneLocs.size());
     return dest;
 }
 
@@ -1031,22 +1065,27 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
             inCity = true;
     }
 
+    float const range = bot->GetLevel() <= 5 ? 500.0f : 2500.0f;
     std::vector<WorldLocation> prepared_locs;
+    std::vector<DistanceAndLocation> otherZoneLocs;
     for (auto& loc : locs)
     {
         if (bot->GetMapId() != loc.GetMapId())
             continue;
 
-        float range = bot->GetLevel() <= 5 ? 500.0f : 2500.0f;
-        if (bot->GetExactDist(loc) > range)
+        float const distance = bot->GetExactDist(loc);
+        if (distance > range)
             continue;
 
-        if (bot->GetExactDist(loc) < 50.0f)
+        if (distance < 50.0f)
             continue;
 
         if (!inCity && bot->GetMap()->GetZoneId(bot->GetPhaseMask(), loc.GetPositionX(), loc.GetPositionY(),
                                                 loc.GetPositionZ()) != bot->GetZoneId())
+        {
+            otherZoneLocs.emplace_back(distance, loc);
             continue;
+        }
 
         prepared_locs.push_back(loc);
     }
@@ -1056,9 +1095,20 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
         uint32 idx = urand(0, prepared_locs.size() - 1);
         dest = prepared_locs[idx];
     }
-    LOG_DEBUG("playerbots", "[New RPG] Bot {} select random inn keeper pos Map:{} X:{} Y:{} Z:{} ({} available in {})",
+    else
+        dest = SelectNearestLocation(otherZoneLocs);
+
+    if (dest == WorldPosition())
+    {
+        LOG_TRACE("playerbots", "[New RPG] Bot {} found no inn keeper pos (level {}, map {}, zone {}, {} hubs)",
+                  bot->GetName(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), locs.size());
+        return dest;
+    }
+
+    LOG_DEBUG("playerbots",
+              "[New RPG] Bot {} select random inn keeper pos Map:{} X:{} Y:{} Z:{} ({} available in {}, {} other zone)",
               bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
-              prepared_locs.size(), locs.size());
+              prepared_locs.size(), locs.size(), otherZoneLocs.size());
     return dest;
 }
 
@@ -1129,20 +1179,19 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         }
         case RPG_GO_GRIND:
         {
-            WorldPosition pos = SelectRandomGrindPos(bot);
-            if (pos != WorldPosition())
+            // CheckRpgStatusAvailable already picked the destination while building availableStatus.
+            if (availableGrindPos != WorldPosition())
             {
-                botAI->rpgInfo.ChangeToGoGrind(pos);
+                botAI->rpgInfo.ChangeToGoGrind(availableGrindPos);
                 return true;
             }
             return false;
         }
         case RPG_GO_CAMP:
         {
-            WorldPosition pos = SelectRandomCampPos(bot);
-            if (pos != WorldPosition())
+            if (availableCampPos != WorldPosition())
             {
-                botAI->rpgInfo.ChangeToGoCamp(pos);
+                botAI->rpgInfo.ChangeToGoCamp(availableCampPos);
                 return true;
             }
             return false;
@@ -1226,13 +1275,33 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
         }
         case RPG_GO_GRIND:
         {
-            WorldPosition pos = SelectRandomGrindPos(bot);
-            return pos != WorldPosition();
+            availableGrindPos = WorldPosition();
+            NewRpgInfo::SelectionFailure& failure = botAI->rpgInfo.grindSelectionFailure;
+            if (IsSelectionFailureRecent(failure))
+                return false;
+
+            availableGrindPos = SelectRandomGrindPos(bot);
+            if (availableGrindPos == WorldPosition())
+            {
+                RememberSelectionFailure(failure);
+                return false;
+            }
+            return true;
         }
         case RPG_GO_CAMP:
         {
-            WorldPosition pos = SelectRandomCampPos(bot);
-            return pos != WorldPosition();
+            availableCampPos = WorldPosition();
+            NewRpgInfo::SelectionFailure& failure = botAI->rpgInfo.campSelectionFailure;
+            if (IsSelectionFailureRecent(failure))
+                return false;
+
+            availableCampPos = SelectRandomCampPos(bot);
+            if (availableCampPos == WorldPosition())
+            {
+                RememberSelectionFailure(failure);
+                return false;
+            }
+            return true;
         }
         case RPG_WANDER_NPC:
         {
@@ -1278,4 +1347,26 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
             return false;
     }
     return false;
+}
+
+bool NewRpgBaseAction::IsSelectionFailureRecent(NewRpgInfo::SelectionFailure const& failure) const
+{
+    if (!failure.failedAt || GetMSTimeDiffToNow(failure.failedAt) >= selectionFailureRetryTime)
+        return false;
+
+    if (failure.mapId != bot->GetMapId() || failure.zoneId != bot->GetZoneId() || failure.level != bot->GetLevel())
+        return false;
+
+    return bot->GetExactDist2d(failure.x, failure.y) < selectionFailureRetryDistance;
+}
+
+void NewRpgBaseAction::RememberSelectionFailure(NewRpgInfo::SelectionFailure& failure) const
+{
+    // getMSTime() can be 0 right after it wraps; 0 means "no failure recorded".
+    failure.failedAt = std::max<uint32>(getMSTime(), 1);
+    failure.mapId = bot->GetMapId();
+    failure.zoneId = bot->GetZoneId();
+    failure.level = bot->GetLevel();
+    failure.x = bot->GetPositionX();
+    failure.y = bot->GetPositionY();
 }

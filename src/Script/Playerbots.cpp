@@ -5,13 +5,16 @@
  */
 
 #include "Playerbots.h"
+#include "AllSpellScript.h"
 #include "BattleGroundTactics.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
 #include "Config.h"
 #include "DatabaseEnv.h"
 #include "DatabaseLoader.h"
+#include "GameObject.h"
 #include "GuildTaskMgr.h"
+#include "LootObjectStack.h"
 #include "PlayerScript.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotCommandScript.h"
@@ -20,6 +23,7 @@
 #include "PlayerbotWorldThreadProcessor.h"
 #include "RandomPlayerbotMgr.h"
 #include "ScriptMgr.h"
+#include "SpellInfo.h"
 #include "cmath"
 
 class PlayerbotsDatabaseScript : public DatabaseScript
@@ -511,6 +515,48 @@ public:
     PlayerbotsBattlefieldScript() : BattlefieldScript("PlayerbotsBattlefieldScript") { }
 };
 
+// Gathering and opening spells have a cast bar, and a busy node or chest is often taken by another player
+// or bot before a bot's cast finishes. The core re-runs CheckCast when the cast bar completes but has no
+// "target despawned" rule for open-lock spells, so the cast goes through and Spell::SendLoot rejects it as
+// "Possible hacking attempt ... on respawn time". Fail the bot's cast at that re-check instead and drop the
+// object from its loot bookkeeping, so it picks another target rather than retrying this one.
+class PlayerbotsSpellScript : public AllSpellScript
+{
+public:
+    PlayerbotsSpellScript() : AllSpellScript("PlayerbotsSpellScript", { ALLSPELLHOOK_ON_SPELL_CHECK_CAST }) { }
+
+    void OnSpellCheckCast(Spell* spell, bool /*strict*/, SpellCastResult& res) override
+    {
+        if (res != SPELL_CAST_OK)
+            return;
+
+        // Runs for every cast on the server: keep the common case (no despawned gameobject target) cheap.
+        GameObject* go = spell->m_targets.GetGOTarget();
+        if (!go || go->isSpawned())
+            return;
+
+        if (!spell->GetSpellInfo()->HasEffect(SPELL_EFFECT_OPEN_LOCK))
+            return;
+
+        Player* caster = spell->GetCaster() ? spell->GetCaster()->ToPlayer() : nullptr;
+        if (!caster)
+            return;
+
+        PlayerbotAI* botAI = GET_PLAYERBOT_AI(caster);
+        if (!botAI)
+            return;
+
+        res = SPELL_FAILED_BAD_TARGETS;
+
+        AiObjectContext* context = botAI->GetAiObjectContext();
+        ObjectGuid const guid = go->GetGUID();
+        AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);
+
+        if (AI_VALUE(LootObject, "loot target").guid == guid)
+            context->GetValue<LootObject>("loot target")->Set(LootObject());
+    }
+};
+
 void AddPlayerbotsSecureLoginScripts();
 void AddPlayerbotsSelfBotAfkScripts();
 
@@ -527,10 +573,12 @@ void AddSC_dc_hinterland_monitor();
 void AddSC_dc_bot_challenge_modes();
 void AddSC_dc_upgrade_items();
 void AddSC_dc_heirloom_upgrade();
+void AddSC_dc_bot_mythic_run();
 
 void AddPlayerbotsScripts()
 {
     new PlayerbotsBattlefieldScript();
+    new PlayerbotsSpellScript();
     new PlayerbotsDatabaseScript();
     new PlayerbotsPlayerScript();
     new PlayerbotsMiscScript();
@@ -555,4 +603,5 @@ void AddPlayerbotsScripts()
     AddSC_dc_bot_challenge_modes();
     AddSC_dc_upgrade_items();
     AddSC_dc_heirloom_upgrade();
+    AddSC_dc_bot_mythic_run();
 }

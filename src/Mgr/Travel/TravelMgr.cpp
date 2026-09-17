@@ -4421,6 +4421,8 @@ std::vector<std::vector<uint32>> TravelMgr::GetOptimalFlightDestinations(Player*
         return validDestinations;
 
     uint32 botLevel = bot->GetLevel();
+    // A bot above every zone bracket flies to the top-bracket zones rather than finding no zone at all.
+    uint32 const bracketLevel = maxBracketLevel ? std::min(botLevel, maxBracketLevel) : botLevel;
 
     // Bots already in a capital shouldn't have another capital picked as a
     // flight destination — that just shuffles them between cities.
@@ -4444,7 +4446,7 @@ std::vector<std::vector<uint32>> TravelMgr::GetOptimalFlightDestinations(Player*
     {
         for (auto const& [zoneId, bracket] : zone2LevelBracket)
         {
-            if (botLevel < bracket.low || botLevel > bracket.high)
+            if (!bracket.InsideBracket(bracketLevel))
                 continue;
             if (GetFlightNodesInZone(zoneId, bot->GetTeamId(), fromNode).empty())
                 continue;
@@ -4481,20 +4483,17 @@ std::vector<std::vector<uint32>> TravelMgr::GetOptimalFlightDestinations(Player*
 
 const std::vector<WorldLocation> TravelMgr::GetTeleportLocations(Player* bot)
 {
-    uint32 level = bot->GetLevel();
-    uint8 isAlliance = bot->GetTeamId() == TEAM_ALLIANCE;
     if (sPlayerbotAIConfig.enableNewRpgStrategy)
-        return isAlliance ? allianceHubsPerLevelCache[level] : hordeHubsPerLevelCache[level];
+        return GetTravelHubs(bot);
 
-    return locsPerLevelCache[level];
+    return GetLevelCacheEntry(locsPerLevelCache, bot->GetLevel());
 }
 
 const std::vector<WorldLocation> TravelMgr::GetTravelHubs(Player* bot)
 {
-    std::vector<WorldLocation> locs = bot->GetTeamId() == TEAM_ALLIANCE
-                                                 ? allianceHubsPerLevelCache[bot->GetLevel()]
-                                                 : hordeHubsPerLevelCache[bot->GetLevel()];
-    return locs;
+    uint8 const level = bot->GetLevel();
+    return bot->GetTeamId() == TEAM_ALLIANCE ? GetLevelCacheEntry(allianceHubsPerLevelCache, level)
+                                             : GetLevelCacheEntry(hordeHubsPerLevelCache, level);
 }
 
 std::vector<WorldLocation> TravelMgr::GetCityLocations(Player* bot)
@@ -4638,6 +4637,10 @@ void TravelMgr::PrepareZone2LevelBracket()
     // Override with values from config
     for (auto const& [zoneId, bracketPair] : sPlayerbotAIConfig.zoneBrackets)
         zone2LevelBracket[zoneId] = {bracketPair.first, bracketPair.second};
+
+    maxBracketLevel = 0;
+    for (auto const& [zoneId, bracket] : zone2LevelBracket)
+        maxBracketLevel = std::max(maxBracketLevel, bracket.high);
 }
 
 void TravelMgr::PrepareDestinationCache()

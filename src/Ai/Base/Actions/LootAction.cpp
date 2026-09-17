@@ -72,6 +72,21 @@ enum ProfessionSpells
 bool OpenLootAction::Execute(Event /*event*/)
 {
     LootObject lootObject = AI_VALUE(LootObject, "loot target");
+
+    // The loot target is chosen while the object is spawned, but a gameobject can be taken by someone
+    // else before the bot gets to open it and then sits on its respawn timer. Opening it anyway is refused
+    // by the server with a "Possible hacking attempt ... on respawn time" error, so forget it instead.
+    if (lootObject.guid.IsGameObject())
+    {
+        GameObject* go = botAI->GetGameObject(lootObject.guid);
+        if (!go || !go->isSpawned())
+        {
+            AI_VALUE(LootObjectStack*, "available loot")->Remove(lootObject.guid);
+            context->GetValue<LootObject>("loot target")->Set(LootObject());
+            return false;
+        }
+    }
+
     bool result = DoLoot(lootObject);
     if (result)
     {

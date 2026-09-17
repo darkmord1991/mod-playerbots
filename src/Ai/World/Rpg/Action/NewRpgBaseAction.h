@@ -62,6 +62,13 @@ protected:
     bool SelectRandomFlightTaxiNode(uint32& flightMasterEntry, WorldPosition& flightMasterPos, std::vector<uint32>& path);
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);
+    bool IsSelectionFailureRecent(NewRpgInfo::SelectionFailure const& failure) const;
+    void RememberSelectionFailure(NewRpgInfo::SelectionFailure& failure) const;
+
+    // Destinations found by CheckRpgStatusAvailable, reused by RandomChangeStatus for the status it picks
+    // so the search does not run twice in one status change.
+    WorldPosition availableGrindPos;
+    WorldPosition availableCampPos;
 
 protected:
     /* FOR MOVE FAR */
@@ -74,6 +81,12 @@ protected:
     // the teleport fires, but long enough that a genuine long
     // walk that is slowly making progress never triggers it.
     const uint32 stuckTime = 90 * 1000;
+
+    /* FOR DESTINATION SELECTION */
+    // A GO_GRIND / GO_CAMP search that found nothing is retried after this long, or sooner once the bot
+    // has moved this far, changed map or zone, or levelled up.
+    const uint32 selectionFailureRetryTime = 5 * MINUTE * IN_MILLISECONDS;
+    const float selectionFailureRetryDistance = 100.0f;
 };
 
 #endif

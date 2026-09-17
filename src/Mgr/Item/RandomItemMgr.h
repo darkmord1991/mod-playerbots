@@ -8,6 +8,7 @@
 #define PLAYERBOTS_RANDOMITEMMGR_H
 
 #include "AiFactory.h"
+#include "DBCEnums.h"
 #include "ItemTemplate.h"
 #include "Player.h"
 #include <array>
@@ -192,6 +193,8 @@ public:
 
     [[nodiscard]] RandomItemList const& GetEquipment(uint32 level, uint8 clazz, uint8 slot, uint32 quality) const;
     [[nodiscard]] RandomItemList const& GetEquipmentNew(uint32 level, InventoryType invType) const;
+    // DarkChaos: the item level a heirloom is scored at for a wearer of this level; 0 = no data.
+    [[nodiscard]] uint32 GetHeirloomItemLevel(uint32 level) const;
     [[nodiscard]] uint32 GetRandomItem(uint32 level, RandomItemType type, RandomItemPredicate* predicate = nullptr) const;
     [[nodiscard]] uint32 GetAmmo(uint32 level, uint32 subClass) const;
     [[nodiscard]] uint32 GetRandomPotion(uint32 level, uint32 effect) const;
@@ -226,6 +229,7 @@ private:
     void BuildCacheRandomItem();
     void BuildCacheEquip();
     void BuildCacheEquipNew();
+    void BuildHeirloomItemLevels();
     void BuildCacheItemInfo();
     void BuildCacheAmmo();
     void BuildCacheFood();
@@ -258,6 +262,8 @@ private:
 
     BotEquipCache equipCache;
     BotEquipCacheNew equipCacheNew;
+    // Indexed by wearer level; built once in Init(), read-only afterwards.
+    std::array<uint32, DEFAULT_MAX_LEVEL + 1> m_heirloomItemLevel = {};
 
     std::unordered_map<uint32, RandomItemCache> randomItemCache;
     std::unordered_map<RandomItemType, RandomItemPredicate*> predicates;
