@@ -3131,6 +3131,14 @@ AiPlayerbot.DCMythicBots.RestManaPct = 50
 # through the StuckSeconds watchdog.
 AiPlayerbot.DCMythicBots.ReviveDeadBots = 1
 
+# Great Vault for random bots. A random bot with a successful Mythic+ run in
+# last week (the vault's claim week) builds its vault and claims the reward that
+# is the biggest upgrade for its spec - gear over tokens. The item goes to its
+# bags and is equipped when it is an upgrade. Checked every VaultSweepMinutes,
+# at most 10 bots per check; a bot that is offline is picked up once it logs in.
+AiPlayerbot.DCMythicBots.VaultAutoClaim = 1
+AiPlayerbot.DCMythicBots.VaultSweepMinutes = 10
+
 ###############################################################################
 # DARK CHAOS - BOT COSMETICS
 #

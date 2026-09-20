@@ -175,6 +175,20 @@ bool BroadcastHelper::BroadcastLootingItem(PlayerbotAI* ai, Player* bot, ItemTem
 {
     if (!sPlayerbotAIConfig.enableBroadcasts)
         return false;
+
+    // Loot chatter is only worth reading when it is about gear. Quest items are picked up in bulk while
+    // questing and say nothing about the bot, so they never get announced regardless of their quality.
+    if (proto->Class == ITEM_CLASS_QUEST)
+        return false;
+
+    // Likewise, weapons and armour the bot could never equip (wrong class/race, missing proficiency or
+    // below the required level) are not something it would brag about.
+    if (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR)
+    {
+        if (bot->BotCanUseItem(proto) != EQUIP_ERR_OK)
+            return false;
+    }
+
     std::map<std::string, std::string> placeholders;
     placeholders["%item_link"] = ai->GetChatHelper()->FormatItem(proto);
     AreaTableEntry const* current_area = ai->GetCurrentArea();

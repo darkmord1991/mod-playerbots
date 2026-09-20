@@ -574,6 +574,7 @@ void AddSC_dc_bot_challenge_modes();
 void AddSC_dc_upgrade_items();
 void AddSC_dc_heirloom_upgrade();
 void AddSC_dc_bot_mythic_run();
+void AddSC_dc_bot_great_vault();
 
 void AddPlayerbotsScripts()
 {
@@ -604,4 +605,5 @@ void AddPlayerbotsScripts()
     AddSC_dc_upgrade_items();
     AddSC_dc_heirloom_upgrade();
     AddSC_dc_bot_mythic_run();
+    AddSC_dc_bot_great_vault();
 }
