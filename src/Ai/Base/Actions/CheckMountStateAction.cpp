@@ -5,6 +5,7 @@
  */
 
 #include "CheckMountStateAction.h"
+#include "PlayerbotsDatabase.h"
 #include "AreaDefines.h"
 #include "BattleGroundTactics.h"
 #include "BattlegroundEY.h"
@@ -20,60 +21,8 @@
 static constexpr uint32 SPELL_COLD_WEATHER_FLYING = 54197;
 static constexpr float PARACHUTE_LAND_THRESHOLD = 15.0f;
 
-namespace
-{
-    // DarkChaos: preferred mounts per bot GUID, built once and read-only after
-    // that. Every map worker thread reaches TryPreferredMount, and the old static
-    // map was both filled lazily behind a plain bool and written through
-    // operator[], which inserted an empty entry for every bot without a preferred
-    // mount. Concurrent inserts corrupted the table: a worker spun forever in the
-    // rehash and the FreezeDetector killed the server (2026-09-15). The magic
-    // static below makes concurrent first callers wait for one load.
-    std::unordered_map<uint32, PreferredMountCache> LoadPreferredMounts()
-    {
-        std::unordered_map<uint32, PreferredMountCache> cache;
-
-        // Verify preferred mounts table existance in the database
-        QueryResult checkTable = PlayerbotsDatabase.Query(
-            "SELECT EXISTS(SELECT * FROM information_schema.tables WHERE table_schema = 'acore_playerbots' AND table_name = 'playerbots_preferred_mounts')");
-
-        if (!checkTable || checkTable->Fetch()[0].Get<uint32>() != 1)
-        {
-            LOG_DEBUG("playerbots", "Preferred mounts SQL table playerbots_preferred_mounts does not exist!");
-            return cache;
-        }
-
-        // Cache all mounts of both types globally, for all entries
-        QueryResult result = PlayerbotsDatabase.Query("SELECT guid, spellid, type FROM playerbots_preferred_mounts");
-        if (!result)
-            return cache;
-
-        uint32 totalResults = 0;
-        do
-        {
-            Field* row = result->Fetch();
-            uint32 guid = row[0].Get<uint32>();
-            uint32 spellId = row[1].Get<uint32>();
-            uint32 mountType = row[2].Get<uint32>();
-
-            if (mountType == 0)
-                cache[guid].groundMounts.push_back(spellId);
-            else if (mountType == 1)
-                cache[guid].flightMounts.push_back(spellId);
-
-            totalResults++;
-        } while (result->NextRow());
-
-        LOG_INFO("playerbots", "Preferred mounts initialized | Total records: {}", totalResults);
-        return cache;
-    }
-
-    std::unordered_map<uint32, PreferredMountCache> const& GetPreferredMounts()
-    {
-        static std::unordered_map<uint32, PreferredMountCache> const cache = LoadPreferredMounts();
-        return cache;
-    }
-}
+// Preferred mounts per bot, loaded once at startup by LoadPreferredMounts()
+std::unordered_map<uint32, PreferredMountCache> CheckMountStateAction::mountCache;
 
 MountData CollectMountData(Player const* bot)
 {
@@ -336,6 +285,8 @@ void CheckMountStateAction::CompleteDismount(Player* bot)
     bot->SetFallInformation(0, startZ);
     fallInfo.pos.Relocate(x, y, groundZ);
     bot->HandleFall(fallInfo);
+    // Re-anchor at the ground: Player::IsFalling() compares standing Z to this, so startZ reads as a fall.
+    bot->SetFallInformation(0, groundZ);
     bot->RemoveUnitMovementFlag(MOVEMENTFLAG_FALLING | MOVEMENTFLAG_FALLING_FAR);
 }
 
@@ -386,31 +337,58 @@ bool CheckMountStateAction::TryForms(Player* master, int32 masterMountType, int3
     return false;
 }
 
+void CheckMountStateAction::LoadPreferredMounts()
+{
+    mountCache.clear();
+
+    PlayerbotsDatabasePreparedStatement* stmt = PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_SEL_PREFERRED_MOUNTS);
+    PreparedQueryResult result = PlayerbotsDatabase.Query(stmt);
+    if (!result)
+        return;
+
+    uint32 totalResults = 0;
+    do
+    {
+        Field* fields = result->Fetch();
+        uint32 guid = fields[0].Get<uint32>();
+        uint32 spellId = fields[1].Get<uint32>();
+        uint32 mountType = fields[2].Get<uint32>();
+
+        if (mountType == 0)
+            mountCache[guid].groundMounts.push_back(spellId);
+        else if (mountType == 1)
+            mountCache[guid].flightMounts.push_back(spellId);
+
+        totalResults++;
+    } while (result->NextRow());
+
+    LOG_INFO("playerbots", "Preferred mounts initialized | Total records: {}", totalResults);
+}
+
 bool CheckMountStateAction::TryPreferredMount(Player* master) const
 {
     uint32 botGUID = bot->GetGUID().GetRawValue();
 
-    // Read-only lookup: find, never operator[] (see GetPreferredMounts).
-    std::unordered_map<uint32, PreferredMountCache> const& mountCache = GetPreferredMounts();
-    auto const cached = mountCache.find(botGUID);
-    if (cached == mountCache.end())
+    // mountCache is filled once on the world thread at startup and only read afterwards
+    auto itr = mountCache.find(botGUID);
+    if (itr == mountCache.end())
         return false;
 
-    PreferredMountCache const& mounts = cached->second;
+    PreferredMountCache const& preferred = itr->second;
 
     // Pick a random preferred mount from the selection, if available
     uint32 chosenMountId = 0;
 
-    if (GetMountType(master) == 0 && !mounts.groundMounts.empty())
+    if (GetMountType(master) == 0 && !preferred.groundMounts.empty())
     {
-        uint32 index = urand(0, mounts.groundMounts.size() - 1);
-        chosenMountId = mounts.groundMounts[index];
+        uint32 index = urand(0, preferred.groundMounts.size() - 1);
+        chosenMountId = preferred.groundMounts[index];
     }
 
-    else if (GetMountType(master) == 1 && !mounts.flightMounts.empty())
+    else if (GetMountType(master) == 1 && !preferred.flightMounts.empty())
     {
-        uint32 index = urand(0, mounts.flightMounts.size() - 1);
-        chosenMountId = mounts.flightMounts[index];
+        uint32 index = urand(0, preferred.flightMounts.size() - 1);
+        chosenMountId = preferred.flightMounts[index];
     }
 
     // No suitable preferred mount found

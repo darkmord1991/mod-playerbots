@@ -7,6 +7,7 @@
 #include "TravelNode.h"
 
 #include "BotStartLocation.h"
+#include "PlayerbotsDatabase.h"
 #include "BudgetValues.h"
 #include "PathGenerator.h"
 #include "Playerbots.h"

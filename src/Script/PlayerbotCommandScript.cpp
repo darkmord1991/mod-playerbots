@@ -163,12 +163,14 @@ public:
         if (!strcmp(args, "tick"))
         {
             sPerfMonitor.PrintStats(true, false);
+            sPerfMonitor.DumpJson(true);
             return true;
         }
 
         if (!strcmp(args, "stack"))
         {
             sPerfMonitor.PrintStats(false, true);
+            sPerfMonitor.DumpJson(false);
             return true;
         }
 
@@ -183,6 +185,7 @@ public:
         }
 
         sPerfMonitor.PrintStats();
+        sPerfMonitor.DumpJson(false);
         return true;
     }
 

@@ -75,7 +75,6 @@ StatsWeightCalculator::StatsWeightCalculator(Player* player) : player_(player)
 
     enable_overflow_penalty_ = true;
     enable_item_set_bonus_ = true;
-    enable_quality_blend_ = true;
 }
 
 void StatsWeightCalculator::Reset()
@@ -117,20 +116,6 @@ float StatsWeightCalculator::CalculateItem(uint32 itemId, int32 randomPropertyId
         CalculateItemSetMod(player_, proto);
 
     CalculateSocketBonus(player_, proto);
-
-    if (enable_quality_blend_)
-    {
-        // Blend with item quality and level. DarkChaos: a heirloom's template item level is a
-        // placeholder, so it blends as a rare at the item level of the gear it competes with at the
-        // wearer's level (RandomItemMgr::BuildHeirloomItemLevels). Until that table exists it falls
-        // back to the wearer's level as an epic.
-        if (proto->Quality != ITEM_QUALITY_HEIRLOOM)
-            weight_ *= PlayerbotFactory::CalcMixedGearScore(proto->ItemLevel, proto->Quality);
-        else if (uint32 const heirloomItemLevel = sRandomItemMgr.GetHeirloomItemLevel(lvl))
-            weight_ *= PlayerbotFactory::CalcMixedGearScore(heirloomItemLevel, ITEM_QUALITY_RARE);
-        else
-            weight_ *= PlayerbotFactory::CalcMixedGearScore(lvl, ITEM_QUALITY_EPIC);
-    }
 
     // Apply weapon speed governance if slot is provided and this is a weapon
     if (sPlayerbotAIConfig.preferredSpecWeapons && slot >= 0 && proto->Class == ITEM_CLASS_WEAPON)
@@ -317,7 +302,7 @@ void StatsWeightCalculator::GenerateBasicWeights(Player* player)
         stats_weights_[STATS_TYPE_CRIT] += 1.5f;
         stats_weights_[STATS_TYPE_HASTE] += 2.1f;
         stats_weights_[STATS_TYPE_EXPERTISE] += 2.1f;
-        stats_weights_[STATS_TYPE_MELEE_DPS] += 15.0f;
+        // Weapon DPS is taken into account as part of Attack Power for Cat Druids.
     }
     else if (cls == CLASS_ROGUE && (tab == ROGUE_TAB_ASSASSINATION || tab == ROGUE_TAB_SUBTLETY))
     {
@@ -520,7 +505,7 @@ void StatsWeightCalculator::GenerateBasicWeights(Player* player)
         stats_weights_[STATS_TYPE_CRIT] += 1.3f;
         stats_weights_[STATS_TYPE_HASTE] += 2.3f;
         stats_weights_[STATS_TYPE_EXPERTISE] += 3.7f;
-        stats_weights_[STATS_TYPE_MELEE_DPS] += 3.0f;
+        // Weapon DPS is taken into account as part of Attack Power for Bear Druids.
     }
 }
 
@@ -563,8 +548,6 @@ void StatsWeightCalculator::GenerateAdditionalWeights(Player* player)
 
     if (pvpSpec_ && !exclude_resilience_)
         stats_weights_[STATS_TYPE_RESILIENCE] += 7.0f;
-    else if (!pvpSpec_)
-        stats_weights_[STATS_TYPE_RESILIENCE] -= 3.0f;
 }
 
 void StatsWeightCalculator::CalculateItemSetMod(Player* player, ItemTemplate const* proto)
