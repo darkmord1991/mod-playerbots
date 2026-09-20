@@ -33,6 +33,7 @@
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotMgr.h"
+#include "PlayerbotsDatabase.h"
 
 #include "Config.h"
 #include "CreatureData.h"
