@@ -43,64 +43,50 @@
 #include "Unit.h"
 #include "World.h"
 #include "WorldSessionMgr.h"
+#include "dc_update_profiler.h"
 #include <algorithm>
 #include <boost/thread/thread.hpp>
+#include <condition_variable>
 #include <cstdlib>
 #include <ctime>
+#include <deque>
 #include <iomanip>
 #include <random>
 #include <set>
+#include <thread>
 #include <utility>
 
 namespace
 {
-    // Azshara Crater is a small custom leveling zone. Bots that have not outgrown it stay on it, and
-    // no more than the configured number may be teleported onto it at a time.
+    // Azshara Crater is a small custom leveling zone with a capped number of slots (CraterRoster).
+    // A bot holding one stays on the crater until it has outgrown it.
     bool StaysInCrater(Player* bot)
     {
-        return sPlayerbotAIConfig.azsharaCraterMaxBots > 0 &&
-               bot->GetMapId() == BotStartLocations::GetCraterStart().mapId &&
-               bot->GetLevel() < sPlayerbotAIConfig.azsharaCraterGraduationLevel;
+        return bot->GetMapId() == BotStartLocations::GetCraterStart().mapId &&
+               bot->GetLevel() < sPlayerbotAIConfig.azsharaCraterGraduationLevel &&
+               CraterRoster::IsResident(bot->GetGUID().GetCounter());
+    }
+
+    // A bot found on the crater keeps its slot, or takes a free one. Only when neither is possible is
+    // it surplus: saved there before the cap counted logged-out bots, or cut by a lowered cap.
+    bool IsCraterSurplus(Player* bot)
+    {
+        return bot->GetMapId() == BotStartLocations::GetCraterStart().mapId &&
+               !CraterRoster::Claim(bot->GetGUID().GetCounter());
     }
 
     // Lowest level a death knight bot may be randomized to.
     //
-    // On the crater that is the realm's own heroic start level: a crater death knight levels
-    // through the onboarding hub like every other class. Anywhere else the bot lives at the Ebon
+    // With a crater slot that is the realm's own heroic start level: a crater death knight levels
+    // through the onboarding hub like every other class. Without one the bot belongs at the Ebon
     // Hold start in the middle of the level 55-58 Scarlet Enclave, so it gets the ordinary death
     // knight start level instead of being rolled back down into a death loop.
     uint32 DeathKnightLevelFloor(Player* bot)
     {
-        if (bot->GetMapId() == BotStartLocations::GetCraterStart().mapId)
+        if (CraterRoster::IsResident(bot->GetGUID().GetCounter()))
             return sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL);
 
         return BotStartLocations::GetDeathKnightStartLevel();
-    }
-
-    // Bots standing on the crater right now. The map holds at most the cap plus whatever real players
-    // are there, so walking its player list is far cheaper than scanning the whole bot roster.
-    uint32 CountCraterBots()
-    {
-        Map* map = sMapMgr->FindMap(BotStartLocations::GetCraterStart().mapId, 0);
-        if (!map)
-            return 0;
-
-        uint32 count = 0;
-        for (auto const& ref : map->GetPlayers())
-            if (Player* player = ref.GetSource())
-                if (GET_PLAYERBOT_AI(player))
-                    ++count;
-
-        return count;
-    }
-
-    // Whether this bot may be sent to the crater at all. A bot already on it never needs a new slot.
-    bool CraterAcceptsBot(Player* bot)
-    {
-        if (bot->GetMapId() == BotStartLocations::GetCraterStart().mapId)
-            return true;
-
-        return CountCraterBots() < sPlayerbotAIConfig.azsharaCraterMaxBots;
     }
 }
 
@@ -470,22 +456,26 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 /*elapsed*/, bool /*minimal*/)
     if (!availableBots.empty())
     {
         // Update bots
-        for (auto bot : availableBots)
         {
-            if (!GetPlayerBot(bot))
-                continue;
-
-            if (ProcessBot(bot))
+            DarkChaos::ScopedUpdateProfiler _prof("Playerbots.UpdateBots");
+            for (auto bot : availableBots)
             {
-                updateBots--;
-            }
+                if (!GetPlayerBot(bot))
+                    continue;
 
-            if (!updateBots)
-                break;
+                if (ProcessBot(bot))
+                {
+                    updateBots--;
+                }
+
+                if (!updateBots)
+                    break;
+            }
         }
 
         if (loginBots && botLoading.empty())
         {
+            DarkChaos::ScopedUpdateProfiler _prof("Playerbots.LoginBots");
             loginBots += updateBots;
             loginBots = std::min(loginBots, maxNewBots);
 
@@ -682,6 +672,15 @@ void RandomPlayerbotMgr::AssignAccountTypes()
 
 bool RandomPlayerbotMgr::IsAccountType(uint32 accountId, uint8 accountType)
 {
+    // AssignAccountTypes fixes these two lists at startup and nothing changes them while the server runs,
+    // so answer from memory: this is asked on every bot login and from bot trade handling on map threads.
+    if (accountType == 1)
+        return std::find(rndBotTypeAccounts.begin(), rndBotTypeAccounts.end(), accountId) != rndBotTypeAccounts.end();
+
+    if (accountType == 2)
+        return std::find(addClassTypeAccounts.begin(), addClassTypeAccounts.end(), accountId) !=
+               addClassTypeAccounts.end();
+
     PlayerbotsDatabasePreparedStatement* stmt = PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_SEL_ACCOUNT_TYPE_BY_ACCOUNT_AND_TYPE);
     stmt->SetData(0, accountId);
     stmt->SetData(1, accountType);
@@ -695,6 +694,7 @@ bool RandomPlayerbotMgr::IsAccountType(uint32 accountId, uint8 accountType)
 // Phase 4 is reached if and only if the value of RandomBotAccountCount is lower than it should.
 uint32 RandomPlayerbotMgr::AddRandomBots()
 {
+    DarkChaos::ScopedUpdateProfiler _prof("Playerbots.AddRandomBots");
     uint32 maxAllowedBotCount = GetEventValue(0, "bot_count");
     static time_t missingBotsTimer = 0;
 
@@ -753,25 +753,34 @@ uint32 RandomPlayerbotMgr::AddRandomBots()
         };
         std::vector<CharacterInfo> allCharacters;
 
+        // One query for the whole pool. Asking per account cost a round trip per RNDbot account (507 on
+        // this realm) on every call, and this runs every half second on the world thread while the bots
+        // are being added after a restart.
+        std::string accountList;
         for (uint32 accountId : accountsToUse)
         {
-            CharacterDatabasePreparedStatement* stmt =
-                CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARS_BY_ACCOUNT_ID);
-            stmt->SetData(0, accountId);
-            PreparedQueryResult result = CharacterDatabase.Query(stmt);
-            if (!result)
-                continue;
+            if (!accountList.empty())
+                accountList += ',';
 
-            do
+            accountList += std::to_string(accountId);
+        }
+
+        if (!accountList.empty())
+        {
+            if (QueryResult result = CharacterDatabase.Query(
+                    "SELECT guid, class, race, account FROM characters WHERE account IN ({})", accountList))
             {
-                Field* fields = result->Fetch();
-                CharacterInfo info;
-                info.guid = fields[0].Get<uint32>();
-                info.rClass = fields[1].Get<uint8>();
-                info.rRace = fields[2].Get<uint8>();
-                info.accountId = accountId;
-                allCharacters.push_back(info);
-            } while (result->NextRow());
+                do
+                {
+                    Field* fields = result->Fetch();
+                    CharacterInfo info;
+                    info.guid = fields[0].Get<uint32>();
+                    info.rClass = fields[1].Get<uint8>();
+                    info.rRace = fields[2].Get<uint8>();
+                    info.accountId = fields[3].Get<uint32>();
+                    allCharacters.push_back(info);
+                } while (result->NextRow());
+            }
         }
 
         // Shuffle for class balance
@@ -1578,6 +1587,20 @@ bool RandomPlayerbotMgr::ProcessBot(Player* bot)
         LOG_INFO("playerbots", "Bot {} remove from group since leader is random bot.", bot->GetName().c_str());
     }
 
+    // A bot on Azshara Crater without a slot leaves it, whatever it is doing. A death knight below the
+    // ordinary death knight level is re-rolled first, because off the crater it belongs to Ebon Hold.
+    if (IsCraterSurplus(bot))
+    {
+        LOG_DEBUG("playerbots", "Bot #{} <{}>: no Azshara Crater slot, moving it off the crater", botId,
+                  bot->GetName());
+        if (bot->getClass() == CLASS_DEATH_KNIGHT && bot->GetLevel() < DeathKnightLevelFloor(bot))
+            RandomizeFirst(bot);
+        else
+            RandomTeleportForLevel(bot);
+
+        return true;
+    }
+
     // only randomize and teleport idle bots
     bool idleBot = false;
     if (TravelTarget* target = botAI->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get())
@@ -1707,11 +1730,12 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
     std::vector<WorldPosition> tlocs;
     for (auto& loc : locs)
         tlocs.push_back(WorldPosition(loc));
-    // A bot that has not outgrown the crater never leaves it; one that has is free to go anywhere,
-    // and may come back only while the crater is under its cap.
+    // A crater resident that has not outgrown it never leaves it; one that has is free to go
+    // anywhere. Any other bot may go there only while a slot is free.
     uint32 const craterMapId = BotStartLocations::GetCraterStart().mapId;
+    ObjectGuid::LowType const botGuid = bot->GetGUID().GetCounter();
     bool const stayInCrater = StaysInCrater(bot);
-    bool const craterOpen = stayInCrater || CraterAcceptsBot(bot);
+    bool const craterOpen = CraterRoster::IsResident(botGuid) || CraterRoster::HasFreeSlot();
 
     // Do not teleport to maps disabled in config
     tlocs.erase(std::remove_if(tlocs.begin(), tlocs.end(),
@@ -1796,6 +1820,16 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
         {
             break;
         }
+
+        // The filter above saw the crater roster as it was then, and other map threads teleport bots
+        // too. Take the slot now that the bot is really going, or hand it back when it leaves.
+        if (loc.GetMapId() == craterMapId)
+        {
+            if (!CraterRoster::Claim(botGuid))
+                continue;
+        }
+        else
+            CraterRoster::Release(botGuid);
 
         bot->GetMotionMaster()->Clear();
         PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
@@ -2413,6 +2447,97 @@ std::vector<uint32> RandomPlayerbotMgr::GetBgBots(uint32 bracket)
     return BgBots;
 }
 
+namespace
+{
+    // Writes the random bot event table behind the in-memory event cache, in order, on one thread.
+    //
+    // The module-owned playerbots pool (ModuleDatabasePool) is synchronous, so committing in
+    // SetEventValue held its caller for a whole BEGIN/DELETE/INSERT/COMMIT round trip: the world
+    // thread while bots are added and logged in (120 commits per AddRandomBots call at startup), and
+    // the map threads whenever a bot's AI stores a value. Once a bot is loaded the game reads only the
+    // cache, so the table merely has to end up with the last write for each event, which a single
+    // FIFO worker guarantees.
+    class BotEventWriter
+    {
+    public:
+        ~BotEventWriter()
+        {
+            // Shutdown drains through Stop() before the pool closes. Getting here with the worker still
+            // running means that did not happen and the pool may already be gone, so drop the rest.
+            Shutdown(false);
+        }
+
+        void Enqueue(PlayerbotsDatabaseTransaction trans)
+        {
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                if (!_stopped)
+                {
+                    if (!_worker.joinable())
+                        _worker = std::thread(&BotEventWriter::Run, this);
+
+                    _queue.push_back(std::move(trans));
+                    _wake.notify_one();
+                    return;
+                }
+            }
+
+            // Past Stop() the pool is closing: commit inline, which does nothing once it has no connections.
+            PlayerbotsDatabase.CommitTransaction(trans);
+        }
+
+        // Commits everything queued so far and ends the worker.
+        void Stop() { Shutdown(true); }
+
+    private:
+        void Shutdown(bool drain)
+        {
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                _stopped = true;
+                _drain = drain;
+            }
+
+            _wake.notify_all();
+            if (_worker.joinable())
+                _worker.join();
+        }
+
+        void Run()
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            for (;;)
+            {
+                _wake.wait(lock, [this] { return _stopped || !_queue.empty(); });
+                if (_queue.empty() || !_drain)
+                    return;
+
+                PlayerbotsDatabaseTransaction trans = std::move(_queue.front());
+                _queue.pop_front();
+
+                lock.unlock();
+                PlayerbotsDatabase.CommitTransaction(trans);
+                lock.lock();
+            }
+        }
+
+        std::mutex _mutex;
+        std::condition_variable _wake;
+        std::deque<PlayerbotsDatabaseTransaction> _queue;
+        std::thread _worker;
+        bool _stopped = false;
+        bool _drain = true;
+    };
+
+    BotEventWriter& GetBotEventWriter()
+    {
+        static BotEventWriter writer;
+        return writer;
+    }
+}
+
+void RandomPlayerbotMgr::StopEventWriter() { GetBotEventWriter().Stop(); }
+
 // Loads a bot's stored events the first time they are needed.
 //
 // Bot AI reads this cache from the map update threads - several at once (IsSpecPvp from
@@ -2551,10 +2676,12 @@ uint32 RandomPlayerbotMgr::SetEventValue(uint32 bot, std::string const& event, u
         trans->Append(stmt);
     }
 
-    PlayerbotsDatabase.CommitTransaction(trans);
-
     // Update in-memory cache
     std::lock_guard<std::mutex> lock(_eventCacheMutex);
+
+    // Queued under the cache lock, so the table receives writes in the order the cache applied them.
+    GetBotEventWriter().Enqueue(std::move(trans));
+
     BotEventCache& cache = eventCache[bot];
     cache.loaded = true;
 

@@ -399,6 +399,10 @@ public:
     void HandleBotOutgoingPacket(WorldPacket const& packet);
     void HandleMasterIncomingPacket(WorldPacket const& packet);
     void HandleMasterOutgoingPacket(WorldPacket const& packet);
+    // Whether any bot reacts to this opcode from or to its master. PlayerbotMgr asks before walking every
+    // random bot for a real player's packet; the constructor registers exactly these opcodes.
+    static bool HandlesMasterIncomingOpcode(uint16 opcode);
+    static bool HandlesMasterOutgoingOpcode(uint16 opcode);
     void HandleTeleportAck();
     void ChangeEngine(BotState type);
     void ChangeEngineOnCombat();

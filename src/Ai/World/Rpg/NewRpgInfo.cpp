@@ -41,6 +41,17 @@ void NewRpgInfo::ChangeToDoQuest(uint32 questId, Quest const* quest)
     data = do_quest;
 }
 
+void NewRpgInfo::ChangeToPickUpQuest(uint32 questId, Quest const* quest, WorldPosition giverPos)
+{
+    startT = getMSTime();
+    DoQuest do_quest;
+    do_quest.questId = questId;
+    do_quest.quest = quest;
+    do_quest.pos = giverPos;
+    do_quest.pickUp = true;
+    data = do_quest;
+}
+
 void NewRpgInfo::ChangeToTravelFlight(uint32 flightMasterEntry, WorldPosition flightMasterPos, std::vector<uint32> path)
 {
     startT = getMSTime();
@@ -169,6 +180,8 @@ std::string NewRpgInfo::ToString()
         {
             out << "DO_QUEST";
             out << "\nquestId: " << arg.questId;
+            if (arg.pickUp)
+                out << " (going to its quest giver)";
             out << "\nobjectiveIdx: " << arg.objectiveIdx;
             out << "\npoiPos: " << arg.pos.GetMapId() << " " << arg.pos.GetPositionX() << " "
                 << arg.pos.GetPositionY() << " " << arg.pos.GetPositionZ();

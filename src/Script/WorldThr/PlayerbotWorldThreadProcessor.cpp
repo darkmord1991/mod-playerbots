@@ -7,6 +7,7 @@
 #include "PlayerbotWorldThreadProcessor.h"
 #include "Log.h"
 #include "Timer.h"
+#include "dc_update_profiler.h"
 #include <algorithm>
 
 void PlayerbotWorldThreadProcessor::Update(uint32 diff)
@@ -67,6 +68,8 @@ bool PlayerbotWorldThreadProcessor::QueueOperation(std::unique_ptr<PlayerbotOper
 
 void PlayerbotWorldThreadProcessor::ProcessBatch()
 {
+    DarkChaos::ScopedUpdateProfiler _prof("Playerbots.WorldThreadOps");
+
     // Extract a batch of operations from the queue
     std::vector<std::unique_ptr<PlayerbotOperation>> batch;
     batch.reserve(m_batchSize);

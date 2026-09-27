@@ -860,6 +860,7 @@ public:
         uint32        taxiNodeId;      // DBC taxi node nearest to this flight master
         uint32        templateEntry;   // creature template ID (for ObjectGuid construction)
         uint32        dbGuid;          // DB spawn GUID (for ObjectGuid construction)
+        uint32        phaseMask;       // spawn phase mask; a bot outside it cannot see this flight master
     };
 
     static TravelMgr& instance()

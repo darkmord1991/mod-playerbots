@@ -8,6 +8,7 @@
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
 #include "Creature.h"
+#include "DCCraterQuestline.h"
 #include "GameObject.h"
 #include "GossipDef.h"
 #include "GridTerrainData.h"
@@ -569,6 +570,10 @@ bool NewRpgBaseAction::IsQuestWorthDoing(Quest const* quest)
     if (quest->IsSeasonal())
         return false;
 
+    // DarkChaos: a crater quest whose objective has no spawn there cannot be finished.
+    if (!DCCraterQuestline::IsPlayable(quest->GetQuestId()))
+        return false;
+
     return true;
 }
 
@@ -836,6 +841,9 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
     Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
     if (!quest)
         return false;
+
+    if (GetCraterQuestlinePos(quest, poiInfo, toComplete))
+        return true;
 
     QuestPOIVector const* poiVector = sObjectMgr->GetQuestPOIVector(questId);
     if (!poiVector)
@@ -1132,6 +1140,10 @@ bool NewRpgBaseAction::SelectRandomFlightTaxiNode(uint32& flightMasterEntry, Wor
 
 bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus)
 {
+    if (std::find(candidateStatus.begin(), candidateStatus.end(), RPG_DO_QUEST) != candidateStatus.end() &&
+        FollowCraterQuestline())
+        return true;
+
     std::vector<NewRpgStatus> availableStatus;
     uint32 probSum = 0;
     for (NewRpgStatus status : candidateStatus)
@@ -1202,7 +1214,8 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
             for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
             {
                 uint32 questId = bot->GetQuestSlotQuestId(slot);
-                if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end())
+                if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end() ||
+                    !DCCraterQuestline::IsPlayable(questId))
                     continue;
 
                 std::vector<POIInfo> poiInfo;
@@ -1314,7 +1327,8 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
             for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
             {
                 uint32 questId = bot->GetQuestSlotQuestId(slot);
-                if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end())
+                if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end() ||
+                    !DCCraterQuestline::IsPlayable(questId))
                     continue;
 
                 std::vector<POIInfo> poiInfo;
@@ -1327,6 +1341,9 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
         }
         case RPG_TRAVEL_FLIGHT:
         {
+            if (IsSelectionFailureRecent(botAI->rpgInfo.flightSelectionFailure))
+                return false;
+
             uint32 flightMasterEntry = 0;
             WorldPosition flightMasterPos;
             std::vector<uint32> path;
@@ -1369,4 +1386,120 @@ void NewRpgBaseAction::RememberSelectionFailure(NewRpgInfo::SelectionFailure& fa
     failure.level = bot->GetLevel();
     failure.x = bot->GetPositionX();
     failure.y = bot->GetPositionY();
+}
+
+// DarkChaos: on the crater a bot plays the quests in DCCraterQuestline order instead of picking one from its log
+// at random. The earliest questline quest it can act on decides: one waiting at its quest giver sends the bot
+// there to take it, one in the log is worked on or turned in. A bot with neither -- between hubs, waiting for a
+// level -- falls back to the random choice. Returns true when it changed the status.
+bool NewRpgBaseAction::FollowCraterQuestline()
+{
+    if (!sPlayerbotAIConfig.RpgStatusProbWeight[RPG_DO_QUEST] || !DCCraterQuestline::AppliesTo(bot))
+        return false;
+
+    uint32 doQuestId = 0;
+    uint32 doRank = DCCraterQuestline::NOT_IN_QUESTLINE;
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 const questId = bot->GetQuestSlotQuestId(slot);
+        uint32 const rank = DCCraterQuestline::GetRank(questId);
+        if (rank >= doRank || botAI->lowPriorityQuest.count(questId) || !DCCraterQuestline::IsPlayable(questId))
+            continue;
+
+        std::vector<POIInfo> poiInfo;
+        if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
+        {
+            doQuestId = questId;
+            doRank = rank;
+        }
+    }
+
+    // A quest that comes before the earliest one in the log is taken first.
+    std::vector<uint32> const& quests = DCCraterQuestline::GetQuests();
+    for (uint32 rank = 0; rank < doRank && rank < quests.size(); ++rank)
+    {
+        Quest const* quest = sObjectMgr->GetQuestTemplate(quests[rank]);
+        if (!quest || !CanPickUpCraterQuest(quest))
+            continue;
+
+        std::vector<WorldPosition> const& givers = DCCraterQuestline::GetStarterPositions(quest->GetQuestId());
+        auto const nearest = std::min_element(givers.begin(), givers.end(),
+                                              [this](WorldPosition const& a, WorldPosition const& b)
+                                              { return bot->GetExactDist(a) < bot->GetExactDist(b); });
+
+        botAI->rpgInfo.ChangeToPickUpQuest(quest->GetQuestId(), quest, *nearest);
+        LOG_DEBUG("playerbots", "[New RPG] {} goes to pick up crater quest {}", bot->GetName(), quest->GetQuestId());
+        return true;
+    }
+
+    if (!doQuestId)
+        return false;
+
+    botAI->rpgInfo.ChangeToDoQuest(doQuestId, sObjectMgr->GetQuestTemplate(doQuestId));
+    return true;
+}
+
+// DarkChaos: where to go for a crater questline quest, from the spawns rather than quest_poi. A quest is turned in
+// at the nearest spawn of its quest ender: quest_poi has no turn-in point for many crater quests, and for "Word for
+// Thalindra" it points at the zone-1 one of its two enders. A kill objective is done where its creatures are
+// spawned. Returns false, leaving the quest to quest_poi, for any other quest, and once only item objectives are
+// left.
+bool NewRpgBaseAction::GetCraterQuestlinePos(Quest const* quest, std::vector<POIInfo>& poiInfo, bool toComplete)
+{
+    uint32 const questId = quest->GetQuestId();
+    if (DCCraterQuestline::GetRank(questId) == DCCraterQuestline::NOT_IN_QUESTLINE ||
+        !DCCraterQuestline::AppliesTo(bot))
+        return false;
+
+    auto const status = bot->getQuestStatusMap().find(questId);
+    if (status == bot->getQuestStatusMap().end())
+        return false;
+
+    // The nearest `limit` positions, nearest first.
+    auto const addNearest = [this, &poiInfo](std::vector<WorldPosition> positions, size_t limit, int32 objectiveIdx)
+    {
+        size_t const count = std::min(positions.size(), limit);
+        std::partial_sort(positions.begin(), positions.begin() + count, positions.end(),
+                          [this](WorldPosition const& a, WorldPosition const& b)
+                          { return bot->GetExactDist(a) < bot->GetExactDist(b); });
+        for (size_t i = 0; i < count; ++i)
+            poiInfo.push_back({{positions[i].GetPositionX(), positions[i].GetPositionY()}, objectiveIdx,
+                               positions[i].GetPositionZ()});
+    };
+
+    if (status->second.Status == QUEST_STATUS_COMPLETE)
+    {
+        if (!toComplete)
+            return false;
+
+        // The quest is turned in at poiInfo[0].
+        addNearest(DCCraterQuestline::GetEnderPositions(questId), 1, -1);
+        return !poiInfo.empty();
+    }
+
+    if (status->second.Status != QUEST_STATUS_INCOMPLETE)
+        return false;
+
+    // The caller picks one at random; a few per objective keeps the bot from crossing the crater for a spawn
+    // when there are closer ones.
+    for (uint32 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+    {
+        if (!quest->RequiredNpcOrGo[i] || status->second.CreatureOrGOCount[i] >= quest->RequiredNpcOrGoCount[i])
+            continue;
+
+        addNearest(DCCraterQuestline::GetObjectivePositions(questId, i), 5, static_cast<int32>(i));
+    }
+
+    return !poiInfo.empty();
+}
+
+bool NewRpgBaseAction::CanPickUpCraterQuest(Quest const* quest)
+{
+    uint32 const questId = quest->GetQuestId();
+    if (bot->GetQuestStatus(questId) != QUEST_STATUS_NONE || botAI->lowPriorityQuest.count(questId) ||
+        DCCraterQuestline::GetStarterPositions(questId).empty())
+        return false;
+
+    return bot->CanTakeQuest(quest, false) && bot->CanAddQuest(quest, false) && IsQuestWorthDoing(quest) &&
+           IsQuestCapableDoing(quest);
 }

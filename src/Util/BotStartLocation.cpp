@@ -6,12 +6,18 @@
 
 #include "BotStartLocation.h"
 
+#include "DatabaseEnv.h"
+#include "Log.h"
 #include "PlayerbotAIConfig.h"
+#include "QueryResult.h"
 #include "SharedDefines.h"
+#include "StringFormat.h"
 #include "World.h"
 
 #include <algorithm>
+#include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace
 {
@@ -50,6 +56,9 @@ namespace
         { RACE_KUL_TIRAN,         RACE_HUMAN    }, // Alliance -> Northshire, Elwynn Forest
         { RACE_DARK_IRON_DWARF,   RACE_DWARF    }, // Alliance -> Coldridge Valley, Dun Morogh
     };
+
+    std::mutex CraterRosterMutex;
+    std::unordered_set<uint32> CraterResidents;
 }
 
 BotStartLocation const& BotStartLocations::GetCraterStart() { return CraterStart; }
@@ -80,4 +89,73 @@ BotStartLocation const* BotStartLocations::Get(uint8 race, uint8 cls)
 
     auto const itr = StockStarts.find(donor);
     return itr != StockStarts.end() ? &itr->second : nullptr;
+}
+
+void CraterRoster::Load()
+{
+    uint32 const cap = sPlayerbotAIConfig.azsharaCraterMaxBots;
+
+    std::string prefix = sPlayerbotAIConfig.randomBotAccountPrefix;
+    CharacterDatabase.EscapeString(prefix);
+
+    // Most recently played first: the bots that were actually using the crater keep their slots, so a
+    // restart rebuilds the roster that was in use rather than an arbitrary one.
+    std::string const sql = Acore::StringFormat(
+        "SELECT guid FROM characters WHERE map = {} AND account IN "
+        "(SELECT id FROM {}.account WHERE username LIKE '{}%') ORDER BY logout_time DESC, guid",
+        CraterStart.mapId, LoginDatabase.GetConnectionInfo()->database, prefix);
+
+    std::unordered_set<uint32> residents;
+    uint32 surplus = 0;
+    if (QueryResult result = CharacterDatabase.Query(sql))
+    {
+        do
+        {
+            if (residents.size() < cap)
+                residents.insert((*result)[0].Get<uint32>());
+            else
+                ++surplus;
+        } while (result->NextRow());
+    }
+
+    LOG_INFO("playerbots", "{} of {} Azshara Crater bot slots are taken.", residents.size(), cap);
+    if (surplus)
+        LOG_INFO("playerbots",
+                 "{} more bots are saved on Azshara Crater without a slot and will be moved off it "
+                 "as they log in.",
+                 surplus);
+
+    std::lock_guard<std::mutex> lock(CraterRosterMutex);
+    CraterResidents = std::move(residents);
+}
+
+bool CraterRoster::IsResident(uint32 guid)
+{
+    std::lock_guard<std::mutex> lock(CraterRosterMutex);
+    return CraterResidents.count(guid) != 0;
+}
+
+bool CraterRoster::HasFreeSlot()
+{
+    std::lock_guard<std::mutex> lock(CraterRosterMutex);
+    return CraterResidents.size() < sPlayerbotAIConfig.azsharaCraterMaxBots;
+}
+
+bool CraterRoster::Claim(uint32 guid)
+{
+    std::lock_guard<std::mutex> lock(CraterRosterMutex);
+    if (CraterResidents.count(guid))
+        return true;
+
+    if (CraterResidents.size() >= sPlayerbotAIConfig.azsharaCraterMaxBots)
+        return false;
+
+    CraterResidents.insert(guid);
+    return true;
+}
+
+void CraterRoster::Release(uint32 guid)
+{
+    std::lock_guard<std::mutex> lock(CraterRosterMutex);
+    CraterResidents.erase(guid);
 }

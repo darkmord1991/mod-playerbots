@@ -108,8 +108,11 @@ public:
 protected:
     bool DoIncompleteQuest(NewRpgInfo::DoQuest& data);
     bool DoCompletedQuest(NewRpgInfo::DoQuest& data);
+    bool PickUpQuest(NewRpgInfo::DoQuest& data);
 
     const uint32 poiStayTime = 5 * 60 * 1000;
+    // How long a bot waits at a quest giver for the quest before giving up on it.
+    const uint32 pickUpStayTime = 30 * 1000;
 };
 
 class NewRpgTravelFlightAction : public NewRpgBaseAction

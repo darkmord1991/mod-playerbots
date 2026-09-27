@@ -30,43 +30,6 @@
 
 namespace
 {
-    // How many bot characters are currently parked on Azshara Crater. Seeded from the database once
-    // per CreateRandomBots() run and then kept in step as new bots are handed the crater start, so
-    // the cap survives a restart. Bots that graduated and moved off the crater free their slot, which
-    // is what lets the roster refill itself over time.
-    uint32 craterStartsTaken = 0;
-
-    void SeedCraterStartCount()
-    {
-        craterStartsTaken = 0;
-        if (!sPlayerbotAIConfig.azsharaCraterMaxBots)
-            return;
-
-        std::string prefix = sPlayerbotAIConfig.randomBotAccountPrefix;
-        CharacterDatabase.EscapeString(prefix);
-
-        std::string const sql = Acore::StringFormat(
-            "SELECT COUNT(*) FROM characters WHERE map = {} AND account IN "
-            "(SELECT id FROM {}.account WHERE username LIKE '{}%')",
-            BotStartLocations::GetCraterStart().mapId, LoginDatabase.GetConnectionInfo()->database, prefix);
-
-        if (QueryResult result = CharacterDatabase.Query(sql))
-            craterStartsTaken = uint32((*result)[0].Get<uint64>());
-
-        LOG_INFO("playerbots", "{} of {} Azshara Crater bot slots are already taken.", craterStartsTaken,
-                 sPlayerbotAIConfig.azsharaCraterMaxBots);
-    }
-
-    // Take a crater slot for a bot about to be created, or report that the crater is full.
-    bool ClaimCraterStartSlot()
-    {
-        if (craterStartsTaken >= sPlayerbotAIConfig.azsharaCraterMaxBots)
-            return false;
-
-        ++craterStartsTaken;
-        return true;
-    }
-
     // Raise a bot that Player::Create() just made up to `level`, repeating the level-dependent
     // init that Create() runs so stats, talents, glyphs, taxi nodes and skill caps match.
     //
@@ -295,7 +258,7 @@ Player* RandomPlayerbotFactory::CreateRandomBot(WorldSession* session, uint8 cls
     // Player::Create() placed the bot using `playercreateinfo`, which on this realm is the
     // onboarding hub for every race. Move it to the stock start for its race instead -- unless this
     // bot took one of the capped Azshara Crater slots, in which case the hub is where it belongs.
-    bool const startsOnCrater = ClaimCraterStartSlot();
+    bool const startsOnCrater = CraterRoster::Claim(player->GetGUID().GetCounter());
     BotStartLocation const* start = startsOnCrater ? &BotStartLocations::GetCraterStart()
                                                    : BotStartLocations::Get(race, cls);
 
@@ -838,7 +801,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
     timer = getMSTime();
     bool nameCached = false;
 
-    SeedCraterStartCount();
+    CraterRoster::Load();
 
     for (uint32 accountNumber = 0; accountNumber < totalAccountCount; ++accountNumber)
     {

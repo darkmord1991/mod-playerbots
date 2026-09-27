@@ -1590,9 +1590,11 @@ AiPlayerbot.RandomBotMaps = 0,1,530,571,37
 
 # Azshara Crater (map 37) is a small custom leveling zone, so the bot population on it is capped.
 #
-# AzsharaCraterMaxBots is used twice: at most this many bots are created with the crater hub as
-# their start location, and at most this many bots may be teleported onto map 37 at a time. Bots
-# that graduate and move off the crater free their slot, so the roster refills itself.
+# AzsharaCraterMaxBots is the number of crater slots. A slot belongs to a bot character whether it
+# is logged in or not: it is taken when a bot is created with the crater hub as its start location
+# or teleported onto map 37, and freed when the bot is teleported off (a bot below
+# AzsharaCraterGraduationLevel never is). At startup the slots go to the bot characters saved on
+# map 37, most recently played first; any beyond the cap are moved off the crater as they log in.
 # 0 keeps bots off the crater entirely; to disable the feature, drop 37 from AiPlayerbot.RandomBotMaps.
 # Default: 100
 AiPlayerbot.AzsharaCraterMaxBots = 100
@@ -1601,6 +1603,21 @@ AiPlayerbot.AzsharaCraterMaxBots = 100
 # above it the bot roams like any other. Matches the crater's own 1-80 zone bracket.
 # Default: 80
 AiPlayerbot.AzsharaCraterGraduationLevel = 80
+
+# Bots on the crater play its quests in order instead of picking them up at random: hub by hub,
+# within a hub by quest level, and the quest that sends the player on to the next hub last. A bot
+# walks to the quest giver of the next quest it can take, works on the earliest quest in its log,
+# and turns quests in at the quest ender's spawn. Quests whose ender or objective creature/object
+# has no spawn on the crater are skipped; they are listed in the log at the first bot update.
+# With nothing left to take or do at its level, a bot grinds, wanders and flies as usual.
+#
+# DCCraterQuestline.Hubs lists the quest-giver NPC entries of each hub, hubs in playing order,
+# separated by commas; NPCs of the same hub are separated by spaces. Only quests with the crater's
+# QuestSortID are ordered. Read once, at the first bot update after startup.
+# Default: 1
+AiPlayerbot.DCCraterQuestline.Enable = 1
+# Default: 300001 300002,300010 300011,300020,300030,300040,300050,300060,300070 300071
+AiPlayerbot.DCCraterQuestline.Hubs = "300001 300002,300010 300011,300020,300030,300040,300050,300060,300070 300071"
 
 # Level a death knight bot starts at when it is NOT given a crater slot.
 #

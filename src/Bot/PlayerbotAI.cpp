@@ -56,7 +56,9 @@
 #include "Unit.h"
 #include "UpdateTime.h"
 #include "Vehicle.h"
+#include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -114,6 +116,59 @@ void PacketHandlingHelper::AddPacket(WorldPacket const& packet)
         queue.push(WorldPacket(packet));
 }
 
+namespace
+{
+    struct MasterPacketHandler
+    {
+        uint16 opcode;
+        char const* action;
+    };
+
+    // The master's packets a bot reacts to. PlayerbotMgr checks an opcode against these lists before it
+    // walks every random bot for a real player's packet, so the constructor registers exactly these.
+    constexpr MasterPacketHandler MasterIncomingHandlers[] = {
+        { CMSG_GAMEOBJ_USE, "use game object" },
+        { CMSG_AREATRIGGER, "area trigger" },
+        // { CMSG_LOOT_ROLL, "loot roll" },
+        { CMSG_GOSSIP_HELLO, "gossip hello" },
+        { CMSG_QUESTGIVER_HELLO, "gossip hello" },
+        { CMSG_ACTIVATETAXI, "activate taxi" },
+        { CMSG_ACTIVATETAXIEXPRESS, "activate taxi" },
+        { CMSG_TAXICLEARALLNODES, "taxi done" },
+        { CMSG_TAXICLEARNODE, "taxi done" },
+        { CMSG_GROUP_UNINVITE, "uninvite" },
+        { CMSG_GROUP_UNINVITE_GUID, "uninvite guid" },
+        { CMSG_LFG_TELEPORT, "lfg teleport" },
+        { CMSG_CAST_SPELL, "see spell" },
+        { CMSG_REPOP_REQUEST, "release spirit" },
+        { CMSG_RECLAIM_CORPSE, "revive from corpse" },
+        // quest packets
+        { CMSG_QUESTGIVER_COMPLETE_QUEST, "complete quest" },
+        { CMSG_QUESTGIVER_ACCEPT_QUEST, "accept quest" },
+        { CMSG_QUEST_CONFIRM_ACCEPT, "confirm quest" },
+        { CMSG_PUSHQUESTTOPARTY, "quest share" },
+    };
+
+    constexpr MasterPacketHandler MasterOutgoingHandlers[] = {
+        { SMSG_PARTY_COMMAND_RESULT, "party command" },
+        { MSG_RAID_READY_CHECK, "ready check" },
+        { MSG_RAID_READY_CHECK_FINISHED, "ready check finished" },
+        { SMSG_QUESTGIVER_OFFER_REWARD, "questgiver quest details" },
+    };
+}
+
+bool PlayerbotAI::HandlesMasterIncomingOpcode(uint16 opcode)
+{
+    return std::any_of(std::begin(MasterIncomingHandlers), std::end(MasterIncomingHandlers),
+                       [opcode](MasterPacketHandler const& handler) { return handler.opcode == opcode; });
+}
+
+bool PlayerbotAI::HandlesMasterOutgoingOpcode(uint16 opcode)
+{
+    return std::any_of(std::begin(MasterOutgoingHandlers), std::end(MasterOutgoingHandlers),
+                       [opcode](MasterPacketHandler const& handler) { return handler.opcode == opcode; });
+}
+
 PlayerbotAI::PlayerbotAI()
     : PlayerbotAIBase(true),
       bot(nullptr),
@@ -167,22 +222,8 @@ PlayerbotAI::PlayerbotAI(Player* bot)
     currentEngine = engines[BOT_STATE_NON_COMBAT];
     currentState = BOT_STATE_NON_COMBAT;
 
-    masterIncomingPacketHandlers.AddHandler(CMSG_GAMEOBJ_USE, "use game object");
-    masterIncomingPacketHandlers.AddHandler(CMSG_AREATRIGGER, "area trigger");
-    // masterIncomingPacketHandlers.AddHandler(CMSG_GAMEOBJ_USE, "use game object");
-    // masterIncomingPacketHandlers.AddHandler(CMSG_LOOT_ROLL, "loot roll");
-    masterIncomingPacketHandlers.AddHandler(CMSG_GOSSIP_HELLO, "gossip hello");
-    masterIncomingPacketHandlers.AddHandler(CMSG_QUESTGIVER_HELLO, "gossip hello");
-    masterIncomingPacketHandlers.AddHandler(CMSG_ACTIVATETAXI, "activate taxi");
-    masterIncomingPacketHandlers.AddHandler(CMSG_ACTIVATETAXIEXPRESS, "activate taxi");
-    masterIncomingPacketHandlers.AddHandler(CMSG_TAXICLEARALLNODES, "taxi done");
-    masterIncomingPacketHandlers.AddHandler(CMSG_TAXICLEARNODE, "taxi done");
-    masterIncomingPacketHandlers.AddHandler(CMSG_GROUP_UNINVITE, "uninvite");
-    masterIncomingPacketHandlers.AddHandler(CMSG_GROUP_UNINVITE_GUID, "uninvite guid");
-    masterIncomingPacketHandlers.AddHandler(CMSG_LFG_TELEPORT, "lfg teleport");
-    masterIncomingPacketHandlers.AddHandler(CMSG_CAST_SPELL, "see spell");
-    masterIncomingPacketHandlers.AddHandler(CMSG_REPOP_REQUEST, "release spirit");
-    masterIncomingPacketHandlers.AddHandler(CMSG_RECLAIM_CORPSE, "revive from corpse");
+    for (MasterPacketHandler const& handler : MasterIncomingHandlers)
+        masterIncomingPacketHandlers.AddHandler(handler.opcode, handler.action);
 
     botOutgoingPacketHandlers.AddHandler(SMSG_PETITION_SHOW_SIGNATURES, "petition offer");
     botOutgoingPacketHandlers.AddHandler(SMSG_GROUP_INVITE, "group invite");
@@ -214,16 +255,10 @@ PlayerbotAI::PlayerbotAI(Player* bot)
     botOutgoingPacketHandlers.AddHandler(SMSG_GROUP_DESTROYED, "group destroyed");
     botOutgoingPacketHandlers.AddHandler(SMSG_GROUP_LIST, "group list");
 
-    masterOutgoingPacketHandlers.AddHandler(SMSG_PARTY_COMMAND_RESULT, "party command");
-    masterOutgoingPacketHandlers.AddHandler(MSG_RAID_READY_CHECK, "ready check");
-    masterOutgoingPacketHandlers.AddHandler(MSG_RAID_READY_CHECK_FINISHED, "ready check finished");
-    masterOutgoingPacketHandlers.AddHandler(SMSG_QUESTGIVER_OFFER_REWARD, "questgiver quest details");
+    for (MasterPacketHandler const& handler : MasterOutgoingHandlers)
+        masterOutgoingPacketHandlers.AddHandler(handler.opcode, handler.action);
 
     // quest packet
-    masterIncomingPacketHandlers.AddHandler(CMSG_QUESTGIVER_COMPLETE_QUEST, "complete quest");
-    masterIncomingPacketHandlers.AddHandler(CMSG_QUESTGIVER_ACCEPT_QUEST, "accept quest");
-    masterIncomingPacketHandlers.AddHandler(CMSG_QUEST_CONFIRM_ACCEPT, "confirm quest");
-    masterIncomingPacketHandlers.AddHandler(CMSG_PUSHQUESTTOPARTY, "quest share");
     botOutgoingPacketHandlers.AddHandler(SMSG_QUESTUPDATE_COMPLETE, "quest update complete");
     botOutgoingPacketHandlers.AddHandler(SMSG_QUESTUPDATE_ADD_KILL, "quest update add kill");
     // SMSG_QUESTUPDATE_ADD_ITEM no longer used
@@ -6531,9 +6566,10 @@ bool PlayerbotAI::StarterLevelDistanceCheck(Player* player, WorldLocation const&
     {
         BotStartLocation const* pInfo = BotStartLocations::Get(player->getRace(true), player->getClass());
 
-        // A bot living on Azshara Crater is measured against the crater hub, not against the stock
-        // start its race would otherwise use - that one is on a different map entirely.
-        if (player->GetMapId() == BotStartLocations::GetCraterStart().mapId)
+        // A bot holding an Azshara Crater slot is measured against the crater hub, not against the
+        // stock start its race would otherwise use - that one is on a different map entirely. A bot
+        // on the crater without a slot is measured against its stock start, which is where it goes.
+        if (CraterRoster::IsResident(player->GetGUID().GetCounter()))
             pInfo = &BotStartLocations::GetCraterStart();
 
         if (!pInfo || loc.GetMapId() != pInfo->mapId)

@@ -17,11 +17,14 @@
 #include "PlayerbotAI.h"
 #include "QuestDef.h"
 #include "TravelMgr.h"
+#include <optional>
 
 struct POIInfo
 {
     G3D::Vector2 pos;
     int32 objectiveIdx;
+    // Known height, for a position taken from a spawn. Without it the caller looks the ground up.
+    std::optional<float> z{};
 };
 
 /// A base (composition) class for all new rpg actions
@@ -64,6 +67,11 @@ protected:
     bool CheckRpgStatusAvailable(NewRpgStatus status);
     bool IsSelectionFailureRecent(NewRpgInfo::SelectionFailure const& failure) const;
     void RememberSelectionFailure(NewRpgInfo::SelectionFailure& failure) const;
+
+    /* DARKCHAOS: AZSHARA CRATER QUESTLINE, see DCCraterQuestline */
+    bool FollowCraterQuestline();
+    bool GetCraterQuestlinePos(Quest const* quest, std::vector<POIInfo>& poiInfo, bool toComplete);
+    bool CanPickUpCraterQuest(Quest const* quest);
 
     // Destinations found by CheckRpgStatusAvailable, reused by RandomChangeStatus for the status it picks
     // so the search does not run twice in one status change.

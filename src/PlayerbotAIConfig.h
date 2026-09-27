@@ -400,6 +400,11 @@ public:
     uint32 azsharaCraterMaxBots;
     uint32 azsharaCraterGraduationLevel;
 
+    // Order in which bots play the crater quests: the quest-giver NPC entries of each hub, hubs in order.
+    // See DCCraterQuestline.
+    bool dcCraterQuestlineEnabled;
+    std::vector<std::vector<uint32>> dcCraterQuestlineHubs;
+
     // Level a bot death knight starts at when it is placed at Ebon Hold instead of the crater.
     // See BotStartLocations::GetDeathKnightStartLevel().
     uint32 deathKnightStartLevel;

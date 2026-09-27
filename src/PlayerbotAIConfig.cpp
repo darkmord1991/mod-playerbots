@@ -740,6 +740,19 @@ bool PlayerbotAIConfig::Initialize()
     azsharaCraterMaxBots = sConfigMgr->GetOption<uint32>("AiPlayerbot.AzsharaCraterMaxBots", 100);
     azsharaCraterGraduationLevel =
         sConfigMgr->GetOption<uint32>("AiPlayerbot.AzsharaCraterGraduationLevel", 80);
+    dcCraterQuestlineEnabled = sConfigMgr->GetOption<bool>("AiPlayerbot.DCCraterQuestline.Enable", true);
+    dcCraterQuestlineHubs.clear();
+    for (std::string const& hub : split(sConfigMgr->GetOption<std::string>("AiPlayerbot.DCCraterQuestline.Hubs",
+             "300001 300002,300010 300011,300020,300030,300040,300050,300060,300070 300071"), ','))
+    {
+        std::vector<uint32> npcs;
+        for (std::string const& npc : split(hub, ' '))
+            if (uint32 entry = static_cast<uint32>(atoi(npc.c_str())))
+                npcs.push_back(entry);
+
+        if (!npcs.empty())
+            dcCraterQuestlineHubs.push_back(std::move(npcs));
+    }
     deathKnightStartLevel = sConfigMgr->GetOption<uint32>("AiPlayerbot.DeathKnightStartLevel", 55);
 
     RpgStatusProbWeight[RPG_WANDER_RANDOM] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.WanderRandom", 15);

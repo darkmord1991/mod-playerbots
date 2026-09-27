@@ -11,6 +11,7 @@
 #include "Player.h"
 #include "PlayerbotAIConfig.h"
 #include "ServerFacade.h"
+#include <algorithm>
 
 Unit* HealthValue::GetTarget()
 {
@@ -51,12 +52,17 @@ bool PetIsDeadValue::Calculate()
 
     if (!bot->GetPet())
     {
-        uint32 ownerid = bot->GetGUID().GetCounter();
-        QueryResult result = CharacterDatabase.Query("SELECT id FROM character_pet WHERE owner = {}", ownerid);
-        if (!result)
+        // Whether the bot owns a pet at all. This used to SELECT from character_pet on the map thread
+        // on every trigger check, and a database outage left that thread in the reconnect loop until the
+        // freeze detector killed the server. The stable holds the same rows, loaded at login and kept
+        // current by the core as pets are summoned, stabled or abandoned.
+        PetStable const* stable = bot->GetPetStable();
+        if (!stable)
             return false;
 
-        return true;
+        return stable->CurrentPet || !stable->UnslottedPets.empty() ||
+               std::any_of(stable->StabledPets.begin(), stable->StabledPets.end(),
+                           [](Optional<PetStable::PetInfo> const& pet) { return pet.has_value(); });
     }
 
     if (bot->GetPetGUID() && !bot->GetPet())

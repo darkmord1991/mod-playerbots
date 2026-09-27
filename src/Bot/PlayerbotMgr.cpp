@@ -1530,23 +1530,29 @@ void PlayerbotMgr::HandleCommand(uint32 type, std::string const text)
 
 void PlayerbotMgr::HandleMasterIncomingPacket(WorldPacket const& packet)
 {
-    for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+    // Every packet a real player sends (movement included) came through here and walked every random bot,
+    // although bots only queue the opcodes their handlers are registered for. The switch below still sees
+    // every opcode.
+    if (PlayerbotAI::HandlesMasterIncomingOpcode(packet.GetOpcode()))
     {
-        Player* const bot = it->second;
-        if (!bot)
-            continue;
-        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
-        if (botAI)
-            botAI->HandleMasterIncomingPacket(packet);
-    }
+        for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+        {
+            Player* const bot = it->second;
+            if (!bot)
+                continue;
+            PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+            if (botAI)
+                botAI->HandleMasterIncomingPacket(packet);
+        }
 
-    for (PlayerBotMap::const_iterator it = sRandomPlayerbotMgr.GetPlayerBotsBegin();
-         it != sRandomPlayerbotMgr.GetPlayerBotsEnd(); ++it)
-    {
-        Player* const bot = it->second;
-        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
-        if (botAI && botAI->GetMaster() == GetMaster())
-            botAI->HandleMasterIncomingPacket(packet);
+        for (PlayerBotMap::const_iterator it = sRandomPlayerbotMgr.GetPlayerBotsBegin();
+             it != sRandomPlayerbotMgr.GetPlayerBotsEnd(); ++it)
+        {
+            Player* const bot = it->second;
+            PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+            if (botAI && botAI->GetMaster() == GetMaster())
+                botAI->HandleMasterIncomingPacket(packet);
+        }
     }
 
     switch (packet.GetOpcode())
@@ -1586,6 +1592,12 @@ void PlayerbotMgr::HandleMasterIncomingPacket(WorldPacket const& packet)
 
 void PlayerbotMgr::HandleMasterOutgoingPacket(WorldPacket const& packet)
 {
+    // Runs for every packet sent to a real player, and the loop below walks every random bot (a map lookup
+    // and a dynamic_cast each) only for AddPacket to drop all but four opcodes. A DC-Collection login sends
+    // ~3,800 addon chunks in one tick, and each of them paid for that walk.
+    if (!PlayerbotAI::HandlesMasterOutgoingOpcode(packet.GetOpcode()))
+        return;
+
     for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
     {
         Player* const bot = it->second;

@@ -439,6 +439,17 @@ bool NewRpgDoQuestAction::Execute(Event /*event*/)
     auto& data = *dataPtr;
     uint32 questId = data.questId;
     uint8 questStatus = bot->GetQuestStatus(questId);
+    if (data.pickUp)
+    {
+        if (questStatus == QUEST_STATUS_NONE)
+            return PickUpQuest(data);
+
+        // Taken: from here on it is done like any quest in the log.
+        data.pickUp = false;
+        data.pos = WorldPosition();
+        data.objectiveIdx = 0;
+        data.lastReachPOI = 0;
+    }
     switch (questStatus)
     {
         case QUEST_STATUS_INCOMPLETE:
@@ -497,8 +508,10 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
 
         float dx = nearestPoi.x, dy = nearestPoi.y;
 
-        // z = MAX_HEIGHT as we do not know accurate z
-        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
+        // z = MAX_HEIGHT as we do not know accurate z, unless the position came from a spawn
+        float dz = poiInfo[rndIdx].z ? *poiInfo[rndIdx].z
+                                     : std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT),
+                                                bot->GetMap()->GetWaterLevel(dx, dy));
 
         // double check for GetQuestPOIPosAndObjectiveIdx
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
@@ -591,8 +604,10 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
         assert(poiInfo.size() > 0);
         // now we get the place to get rewarded
         float dx = poiInfo[0].pos.x, dy = poiInfo[0].pos.y;
-        // z = MAX_HEIGHT as we do not know accurate z
-        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
+        // z = MAX_HEIGHT as we do not know accurate z, unless the position came from a spawn
+        float dz = poiInfo[0].z ? *poiInfo[0].z
+                                : std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT),
+                                           bot->GetMap()->GetWaterLevel(dx, dy));
 
         // double check for GetQuestPOIPosAndObjectiveIdx
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
@@ -635,6 +650,35 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
     return false;
 }
 
+// DarkChaos: walk to the quest giver of a crater questline quest. SearchQuestGiverAndAcceptOrReward, at the top of
+// Execute, takes the quest once the giver is in range. See NewRpgBaseAction::FollowCraterQuestline.
+bool NewRpgDoQuestAction::PickUpQuest(NewRpgInfo::DoQuest& data)
+{
+    if (bot->GetDistance(data.pos) > 10.0f && !data.lastReachPOI)
+    {
+        if (MoveFarTo(data.pos))
+            return true;
+        return MoveRandomNear(10.0f);
+    }
+
+    if (!data.lastReachPOI)
+    {
+        data.lastReachPOI = getMSTime();
+        return true;
+    }
+
+    // At the quest giver and still without the quest: it will not give it to this bot.
+    if (GetMSTimeDiffToNow(data.lastReachPOI) >= pickUpStayTime)
+    {
+        botAI->lowPriorityQuest.insert(data.questId);
+        LOG_DEBUG("playerbots", "[New RPG] {} could not pick up quest {} at its quest giver", bot->GetName(),
+                  data.questId);
+        botAI->rpgInfo.ChangeToIdle();
+        return true;
+    }
+    return false;
+}
+
 bool NewRpgTravelFlightAction::Execute(Event /*event*/)
 {
     NewRpgInfo& info = botAI->rpgInfo;
@@ -656,6 +700,11 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
     Creature* flightMaster = bot->FindNearestCreature(data.flightMasterEntry, INTERACTION_DISTANCE * 3);
     if (!flightMaster || !flightMaster->IsAlive())
     {
+        // Dead, despawned or phased away. Without backing off, the next status change picks the same
+        // flight master again, because it is still the nearest one.
+        LOG_DEBUG("playerbots", "[New RPG] {} found no usable flight master {} at its spawn (phase {})", bot->GetName(),
+                  data.flightMasterEntry, bot->GetPhaseMask());
+        RememberSelectionFailure(info.flightSelectionFailure);
         info.ChangeToIdle();
         return true;
     }

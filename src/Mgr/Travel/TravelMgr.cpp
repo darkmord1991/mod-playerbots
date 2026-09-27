@@ -4378,6 +4378,12 @@ TravelMgr::FlightMasterInfo const* TravelMgr::GetNearestFlightMasterInfo(Player*
         if (info.pos.GetMapId() != bot->GetMapId())
             continue;
 
+        // An area phase aura can move the bot out of the flight master's phase (The Shadow Vault puts
+        // anyone short of its quest line into phase 2, its flight master is phase 1). The bot would walk
+        // to a flight master it cannot see, fail to find it and pick the same one again.
+        if (!(info.phaseMask & bot->GetPhaseMask()))
+            continue;
+
         float distance = bot->GetExactDist2dSq(info.pos);
         if (distance < nearestDistance)
         {
@@ -4744,6 +4750,7 @@ void TravelMgr::PrepareDestinationCache()
                     info.taxiNodeId = sObjectMgr->GetNearestTaxiNode(x, y, z, mapId, TEAM_HORDE);
                     info.templateEntry = templateEntry;
                     info.dbGuid = guid;
+                    info.phaseMask = creatureData.phaseMask;
                     hordeFlightMasterCache[guid] = info;
                 }
 
@@ -4755,6 +4762,7 @@ void TravelMgr::PrepareDestinationCache()
                     info.taxiNodeId = sObjectMgr->GetNearestTaxiNode(x, y, z, mapId, TEAM_ALLIANCE);
                     info.templateEntry = templateEntry;
                     info.dbGuid = guid;
+                    info.phaseMask = creatureData.phaseMask;
                     allianceFlightMasterCache[guid] = info;
                 }
                 flightMastersCount++;

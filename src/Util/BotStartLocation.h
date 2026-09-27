@@ -54,4 +54,28 @@ namespace BotStartLocations
     uint32 GetDeathKnightStartLevel();
 }
 
+// DarkChaos: the bots that hold one of the AiPlayerbot.AzsharaCraterMaxBots slots on Azshara Crater.
+//
+// A slot belongs to a character whether it is logged in or not, from the moment it is created on the
+// crater or teleported onto it until it is teleported off. The cap used to be checked against the
+// bots standing on the map, which let the crater keep taking bots while its residents were logged
+// out -- and a resident never leaves before it graduates, so the population only ever grew.
+//
+// Called from the world thread and from bot AI on the map threads, so every member locks.
+class CraterRoster
+{
+public:
+    // Rebuilds the roster from the characters database: the bot characters saved on the crater, most
+    // recently played first, up to the cap. Any beyond it get no slot and are moved off the crater the
+    // next time the random bot manager processes them. Startup only (world thread, blocking query).
+    static void Load();
+
+    static bool IsResident(uint32 guid);
+    static bool HasFreeSlot();
+
+    // True when `guid` already holds a slot, or a slot was free and is now its.
+    static bool Claim(uint32 guid);
+    static void Release(uint32 guid);
+};
+
 #endif

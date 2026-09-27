@@ -51,6 +51,8 @@ struct NewRpgInfo
         int32 objectiveIdx{0};
         WorldPosition pos{};
         uint32 lastReachPOI{0};
+        // The quest is not in the log yet: pos is its quest giver, and the bot goes there to take it.
+        bool pickUp{false};
     };
     // RPG_TRAVEL_FLIGHT
     struct TravelFlight
@@ -79,6 +81,7 @@ struct NewRpgInfo
     // A GO_GRIND or GO_CAMP destination search that found nothing, with where the bot stood when it ran.
     // While the bot stays there at the same level the search cannot succeed, so the status update skips
     // that status for a while instead of rescanning every destination on each status change.
+    // flightSelectionFailure records a TRAVEL_FLIGHT whose flight master was missing at its spawn.
     struct SelectionFailure
     {
         uint32 failedAt{0};
@@ -90,6 +93,7 @@ struct NewRpgInfo
     };
     SelectionFailure grindSelectionFailure;
     SelectionFailure campSelectionFailure;
+    SelectionFailure flightSelectionFailure;
 
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};
@@ -119,6 +123,7 @@ struct NewRpgInfo
     void ChangeToWanderNpc();
     void ChangeToWanderRandom();
     void ChangeToDoQuest(uint32 questId, Quest const* quest);
+    void ChangeToPickUpQuest(uint32 questId, Quest const* quest, WorldPosition giverPos);
     void ChangeToTravelFlight(uint32 flightMasterEntry, WorldPosition flightMasterPos, std::vector<uint32> path);
     void ChangeToOutdoorPvp(ObjectGuid::LowType capturePointSpawnId = 0);
     void ChangeToRest();

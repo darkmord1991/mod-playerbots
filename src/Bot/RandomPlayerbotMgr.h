@@ -173,6 +173,8 @@ public:
 
     void PrepareAddclassCache();
     void Init();
+    // Commits the queued bot event writes; call before the playerbots database closes.
+    static void StopEventWriter();
     std::map<uint8, std::unordered_set<ObjectGuid>> addclassCache;
 
     // Account type management

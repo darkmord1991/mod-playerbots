@@ -101,7 +101,11 @@ public:
 
     void OnModuleDatabasesKeepAlive() override { PlayerbotsDatabase.KeepAlive(); }
 
-    void OnModuleDatabasesClosing() override { PlayerbotsDatabase.Close(); }
+    void OnModuleDatabasesClosing() override
+    {
+        RandomPlayerbotMgr::StopEventWriter();
+        PlayerbotsDatabase.Close();
+    }
 
     void OnDatabaseWarnAboutSyncQueries(bool apply) override { PlayerbotsDatabase.WarnAboutSyncQueries(apply); }
 
