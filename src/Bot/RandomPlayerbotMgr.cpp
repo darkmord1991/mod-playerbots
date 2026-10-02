@@ -46,14 +46,11 @@
 #include "dc_update_profiler.h"
 #include <algorithm>
 #include <boost/thread/thread.hpp>
-#include <condition_variable>
 #include <cstdlib>
 #include <ctime>
-#include <deque>
 #include <iomanip>
 #include <random>
 #include <set>
-#include <thread>
 #include <utility>
 
 namespace
@@ -583,7 +580,7 @@ void RandomPlayerbotMgr::AssignAccountTypes()
             PlayerbotsDatabasePreparedStatement* stmt = PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_INS_ACCOUNT_TYPE);
             stmt->SetData(0, accountId);
             stmt->SetData(1, uint8(0));
-            PlayerbotsDatabase.Execute(stmt);
+            PlayerbotsDatabase.DirectExecute(stmt);
             currentAssignments[accountId] = 0;
         }
     }
@@ -618,7 +615,7 @@ void RandomPlayerbotMgr::AssignAccountTypes()
                 PlayerbotsDatabasePreparedStatement* stmt = PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_UPD_ACCOUNT_TYPE);
                 stmt->SetData(0, uint8(1));
                 stmt->SetData(1, accountId);
-                PlayerbotsDatabase.Execute(stmt);
+                PlayerbotsDatabase.DirectExecute(stmt);
                 currentAssignments[accountId] = 1;
                 assigned++;
             }
@@ -646,7 +643,7 @@ void RandomPlayerbotMgr::AssignAccountTypes()
                 PlayerbotsDatabasePreparedStatement* stmt = PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_UPD_ACCOUNT_TYPE);
                 stmt->SetData(0, uint8(2));
                 stmt->SetData(1, accountId);
-                PlayerbotsDatabase.Execute(stmt);
+                PlayerbotsDatabase.DirectExecute(stmt);
                 currentAssignments[accountId] = 2;
                 assigned++;
             }
@@ -685,6 +682,12 @@ bool RandomPlayerbotMgr::IsAccountType(uint32 accountId, uint8 accountType)
     stmt->SetData(0, accountId);
     stmt->SetData(1, accountType);
     return PlayerbotsDatabase.Query(stmt) != nullptr;
+}
+
+bool RandomPlayerbotMgr::IsAddClassAccount(uint32 accountId) const
+{
+    return std::find(addClassTypeAccounts.begin(), addClassTypeAccounts.end(), accountId) !=
+           addClassTypeAccounts.end();
 }
 
 // Logs-in bots in 4 phases. Phase 1 logs Alliance bots up to how much is expected according to the faction ratio,
@@ -1897,7 +1900,7 @@ void RandomPlayerbotMgr::Init()
 
     PlayerbotsDatabasePreparedStatement* stmt = PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_DEL_RANDOM_BOTS_BY_EVENT);
     stmt->SetData(0, std::string("add"));
-    PlayerbotsDatabase.Execute(stmt);
+    PlayerbotsDatabase.DirectExecute(stmt);
 }
 
 void RandomPlayerbotMgr::InitArenaTeams()
@@ -2447,97 +2450,6 @@ std::vector<uint32> RandomPlayerbotMgr::GetBgBots(uint32 bracket)
     return BgBots;
 }
 
-namespace
-{
-    // Writes the random bot event table behind the in-memory event cache, in order, on one thread.
-    //
-    // The module-owned playerbots pool (ModuleDatabasePool) is synchronous, so committing in
-    // SetEventValue held its caller for a whole BEGIN/DELETE/INSERT/COMMIT round trip: the world
-    // thread while bots are added and logged in (120 commits per AddRandomBots call at startup), and
-    // the map threads whenever a bot's AI stores a value. Once a bot is loaded the game reads only the
-    // cache, so the table merely has to end up with the last write for each event, which a single
-    // FIFO worker guarantees.
-    class BotEventWriter
-    {
-    public:
-        ~BotEventWriter()
-        {
-            // Shutdown drains through Stop() before the pool closes. Getting here with the worker still
-            // running means that did not happen and the pool may already be gone, so drop the rest.
-            Shutdown(false);
-        }
-
-        void Enqueue(PlayerbotsDatabaseTransaction trans)
-        {
-            {
-                std::lock_guard<std::mutex> lock(_mutex);
-                if (!_stopped)
-                {
-                    if (!_worker.joinable())
-                        _worker = std::thread(&BotEventWriter::Run, this);
-
-                    _queue.push_back(std::move(trans));
-                    _wake.notify_one();
-                    return;
-                }
-            }
-
-            // Past Stop() the pool is closing: commit inline, which does nothing once it has no connections.
-            PlayerbotsDatabase.CommitTransaction(trans);
-        }
-
-        // Commits everything queued so far and ends the worker.
-        void Stop() { Shutdown(true); }
-
-    private:
-        void Shutdown(bool drain)
-        {
-            {
-                std::lock_guard<std::mutex> lock(_mutex);
-                _stopped = true;
-                _drain = drain;
-            }
-
-            _wake.notify_all();
-            if (_worker.joinable())
-                _worker.join();
-        }
-
-        void Run()
-        {
-            std::unique_lock<std::mutex> lock(_mutex);
-            for (;;)
-            {
-                _wake.wait(lock, [this] { return _stopped || !_queue.empty(); });
-                if (_queue.empty() || !_drain)
-                    return;
-
-                PlayerbotsDatabaseTransaction trans = std::move(_queue.front());
-                _queue.pop_front();
-
-                lock.unlock();
-                PlayerbotsDatabase.CommitTransaction(trans);
-                lock.lock();
-            }
-        }
-
-        std::mutex _mutex;
-        std::condition_variable _wake;
-        std::deque<PlayerbotsDatabaseTransaction> _queue;
-        std::thread _worker;
-        bool _stopped = false;
-        bool _drain = true;
-    };
-
-    BotEventWriter& GetBotEventWriter()
-    {
-        static BotEventWriter writer;
-        return writer;
-    }
-}
-
-void RandomPlayerbotMgr::StopEventWriter() { GetBotEventWriter().Stop(); }
-
 // Loads a bot's stored events the first time they are needed.
 //
 // Bot AI reads this cache from the map update threads - several at once (IsSpecPvp from
@@ -2679,8 +2591,10 @@ uint32 RandomPlayerbotMgr::SetEventValue(uint32 bot, std::string const& event, u
     // Update in-memory cache
     std::lock_guard<std::mutex> lock(_eventCacheMutex);
 
-    // Queued under the cache lock, so the table receives writes in the order the cache applied them.
-    GetBotEventWriter().Enqueue(std::move(trans));
+    // Committed under the cache lock, so the pool queues the writes in the order the cache applied
+    // them. That ordering holds while PlayerbotsDatabase.WorkerThreads is 1; with several async
+    // connections the commits can overtake each other.
+    PlayerbotsDatabase.CommitTransaction(trans);
 
     BotEventCache& cache = eventCache[bot];
     cache.loaded = true;

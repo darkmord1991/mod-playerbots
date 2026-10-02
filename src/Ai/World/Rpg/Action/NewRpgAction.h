@@ -96,7 +96,7 @@ public:
     NewRpgWanderNpcAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "new rpg move npcs") {}
     bool Execute(Event event) override;
 
-    const uint32 npcStayTime = 8 * 1000;
+    const uint32 npcStayTime = 8 * IN_MILLISECONDS;
 };
 
 class NewRpgDoQuestAction : public NewRpgBaseAction
@@ -110,9 +110,9 @@ protected:
     bool DoCompletedQuest(NewRpgInfo::DoQuest& data);
     bool PickUpQuest(NewRpgInfo::DoQuest& data);
 
-    const uint32 poiStayTime = 5 * 60 * 1000;
+    const uint32 poiStayTime = 5 * MINUTE * IN_MILLISECONDS;
     // How long a bot waits at a quest giver for the quest before giving up on it.
-    const uint32 pickUpStayTime = 30 * 1000;
+    const uint32 pickUpStayTime = 30 * IN_MILLISECONDS;
 };
 
 class NewRpgTravelFlightAction : public NewRpgBaseAction

@@ -88,7 +88,7 @@ protected:
     // cone fallback wandering) doesn't spin for 5 minutes before
     // the teleport fires, but long enough that a genuine long
     // walk that is slowly making progress never triggers it.
-    const uint32 stuckTime = 90 * 1000;
+    const uint32 stuckTime = 90 * IN_MILLISECONDS;
 
     /* FOR DESTINATION SELECTION */
     // A GO_GRIND / GO_CAMP search that found nothing is retried after this long, or sooner once the bot
