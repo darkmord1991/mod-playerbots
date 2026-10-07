@@ -309,6 +309,12 @@ bool LootObject::IsLootPossible(Player* bot)
     if (go && (go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_NOT_SELECTABLE) || !go->isSpawned()))
         return false;
 
+    // "nearest game objects" is a plain grid search, so it also returns objects the server hides from this
+    // character (a GameObjectAI's CanBeSeen, visibility conditions). A player could not loot those, and DC's
+    // worldforged pickups hide themselves from a character that already took their item.
+    if (go && !bot->CanSeeOrDetect(go))
+        return false;
+
     // Conditional objects (quest chests, goobers, ...) are gated client-side on quest state.
     // A bot has no client, so make the same call the server makes for one.
     if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND) && !go->ActivateToQuest(bot))
