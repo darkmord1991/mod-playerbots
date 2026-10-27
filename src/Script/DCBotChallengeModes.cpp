@@ -7,7 +7,7 @@
  * challenge auras real players do.
  *
  * Taking a mode is NOT mandatory and NOT universal:
- * AiPlayerbot.DCChallengeModes.Chance decides what fraction of bots ever get
+ * Playerbots.DCChallengeModes.Chance decides what fraction of bots ever get
  * one. The roll is derived from the bot's character GUID (StableRoll), so a
  * bot's fate is fixed for its whole life - a bot that rolls "no challenge"
  * never re-rolls on a later login, and a bot that rolls a mode gets exactly
@@ -144,7 +144,7 @@ namespace
             if (it == std::end(kModeNames))
             {
                 LOG_WARN("playerbots",
-                         "DCChallengeModes: unknown mode '{}' in AiPlayerbot.DCChallengeModes.Modes - ignored", token);
+                         "DCChallengeModes: unknown mode '{}' in Playerbots.DCChallengeModes.Modes - ignored", token);
                 continue;
             }
 
@@ -159,16 +159,16 @@ namespace
 
     void LoadConfig()
     {
-        s_cfg.enabled          = sConfigMgr->GetOption<bool>("AiPlayerbot.DCChallengeModes.Enable", true);
-        s_cfg.chance           = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCChallengeModes.Chance", 15);
-        s_cfg.secondModeChance = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCChallengeModes.SecondModeChance", 0);
-        s_cfg.minLevel         = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCChallengeModes.MinLevel", 10);
-        s_cfg.retireDeceased   = sConfigMgr->GetOption<bool>("AiPlayerbot.DCChallengeModes.RetireDeceased", true);
+        s_cfg.enabled          = sConfigMgr->GetOption<bool>("Playerbots.DCChallengeModes.Enable", true);
+        s_cfg.chance           = sConfigMgr->GetOption<uint32>("Playerbots.DCChallengeModes.Chance", 15);
+        s_cfg.secondModeChance = sConfigMgr->GetOption<uint32>("Playerbots.DCChallengeModes.SecondModeChance", 0);
+        s_cfg.minLevel         = sConfigMgr->GetOption<uint32>("Playerbots.DCChallengeModes.MinLevel", 10);
+        s_cfg.retireDeceased   = sConfigMgr->GetOption<bool>("Playerbots.DCChallengeModes.RetireDeceased", true);
 
         s_cfg.chance           = std::min<uint32>(s_cfg.chance, 100);
         s_cfg.secondModeChance = std::min<uint32>(s_cfg.secondModeChance, 100);
 
-        ParseAllowedModes(sConfigMgr->GetOption<std::string>("AiPlayerbot.DCChallengeModes.Modes",
+        ParseAllowedModes(sConfigMgr->GetOption<std::string>("Playerbots.DCChallengeModes.Modes",
                                                              "ItemQuality,SlowXp,VerySlowXp,QuestXpOnly"));
 
         if (s_cfg.enabled && s_cfg.allowed.empty())

@@ -61,8 +61,8 @@ namespace
     void LoadConfig()
     {
         VaultConfig cfg;
-        cfg.enabled = sConfigMgr->GetOption<bool>("AiPlayerbot.DCMythicBots.VaultAutoClaim", true);
-        uint32 const minutes = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCMythicBots.VaultSweepMinutes", 10);
+        cfg.enabled = sConfigMgr->GetOption<bool>("Playerbots.DCMythicBots.VaultAutoClaim", true);
+        uint32 const minutes = sConfigMgr->GetOption<uint32>("Playerbots.DCMythicBots.VaultSweepMinutes", 10);
         cfg.sweepMs = std::max<uint32>(minutes, 1) * MINUTE * IN_MILLISECONDS;
         sConfig = cfg;
     }

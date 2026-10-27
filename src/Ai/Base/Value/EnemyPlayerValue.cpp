@@ -23,7 +23,7 @@ bool NearestEnemyPlayersValue::AcceptUnit(Unit* unit)
         !sPlayerbotAIConfig.IsPvpProhibited(enemy->GetZoneId(), enemy->GetAreaId()) &&
         !enemy->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NON_ATTACKABLE_2) &&
         ((inCannon || !enemy->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE))) &&
-        /*!enemy->HasStealthAura() && !enemy->HasInvisibilityAura()*/ enemy->CanSeeOrDetect(bot) &&
+        /*!enemy->HasStealthAura() && !enemy->HasInvisibilityAura()*/ (bot->InBattleground() ? bot->CanSeeOrDetect(enemy) : enemy->CanSeeOrDetect(bot)) &&
         !(enemy->HasSpiritOfRedemptionAura()))
     {
         // If with master, only attack if master is PvP flagged
@@ -41,12 +41,15 @@ Unit* EnemyPlayerValue::Calculate()
 {
     bool controllingCannon = false;
     bool controllingVehicle = false;
+    bool passenger = false;
     if (Vehicle* vehicle = bot->GetVehicle())
     {
         VehicleSeatEntry const* seat = vehicle->GetSeatForPassenger(bot);
-        if (!seat || !seat->CanControl())  // not in control of vehicle so cant attack anyone
-            return nullptr;
-        if (botAI->IsInVehicle(false, false, false, false, true))
+        if (!seat || (!seat->CanControl() && !(seat->m_flags & VEHICLE_SEAT_FLAG_CAN_ATTACK)))
+            return nullptr;  // a passenger seat that can't attack
+        if (!seat->CanControl())
+            passenger = true;  // fights from its seat: it can't close in
+        else if (botAI->IsInVehicle(false, false, false, false, true))
             controllingCannon = true;
         else
             controllingVehicle = true;
@@ -58,7 +61,8 @@ Unit* EnemyPlayerValue::Calculate()
     for (auto const& [guid, combatRef] : bot->GetCombatManager().GetPvPCombatRefs())
     {
         Unit* pTarget = combatRef->GetOther(bot);
-        if (!pTarget || pTarget == pVictim || !pTarget->IsPlayer() || !pTarget->CanSeeOrDetect(bot) ||
+        if (!pTarget || pTarget == pVictim || !pTarget->IsPlayer() ||
+            !(bot->InBattleground() ? bot->CanSeeOrDetect(pTarget) : pTarget->CanSeeOrDetect(bot)) ||
             !bot->IsWithinDist(pTarget, VISIBILITY_DISTANCE_NORMAL))
             continue;
 
@@ -113,7 +117,8 @@ Unit* EnemyPlayerValue::Calculate()
         // whoever it is looking at and would only start on enemies inside 20 yards -
         // which is how two full teams ran past each other without a fight.
         bool const inHinterland = DCHinterlandTacticsAction::IsInHinterlandBG(bot);
-        uint32 const aggroDistance = controllingVehicle ? 5.0f
+        uint32 const aggroDistance = passenger            ? 30.0f
+                                     : controllingVehicle ? 5.0f
                                      : (controllingCannon || inHinterland || bot->GetHealth() > pTarget->GetHealth())
                                          ? maxAggroDistance
                                          : 20.0f;
@@ -141,7 +146,8 @@ Unit* EnemyPlayerValue::Calculate()
 
                 if (Unit* pAttacker = pMember->getAttackerForHelper())
                     if (pAttacker->IsPlayer() && bot->IsWithinDist(pAttacker, maxAggroDistance * 2.0f) &&
-                        bot->IsWithinLOSInMap(pAttacker) && pAttacker != pVictim && pAttacker->CanSeeOrDetect(bot))
+                        bot->IsWithinLOSInMap(pAttacker) && pAttacker != pVictim &&
+                        (bot->InBattleground() ? bot->CanSeeOrDetect(pAttacker) : pAttacker->CanSeeOrDetect(bot)))
                         return pAttacker;
             }
         }
@@ -170,7 +176,7 @@ float EnemyPlayerValue::GetMaxAttackDistance()
     }
 
     // DarkChaos: Hinterland BG is an open-field deathmatch, not a flag map, so
-    // the engage range is the open-world one (AiPlayerbot.DCHinterland.EngageDistance).
+    // the engage range is the open-world one (Playerbots.DCHinterland.EngageDistance).
     if (bgType == BattlegroundTypeId(DC_BATTLEGROUND_HLBG_TYPE_ID))
         return DCHinterlandTacticsAction::GetEngageDistance();
 

@@ -10,6 +10,9 @@
 #include "ItemTemplate.h"
 #include "SpellInfo.h"
 
+struct ScalingStatDistributionEntry;
+struct ScalingStatValuesEntry;
+
 enum StatsType : uint8
 {
     // Basic stats
@@ -62,12 +65,10 @@ enum CollectorType : uint8
 class StatsCollector
 {
 public:
-    StatsCollector(CollectorType type, int32 cls = -1);
+    StatsCollector(CollectorType type, int32 cls = -1, int32 lvl = -1);
     StatsCollector(StatsCollector& stats) = default;
     void Reset();
-    // level: the wearer's level, used to resolve heirloom (ScalingStatDistribution) stats.
-    // 0 reads the template values as-is.
-    void CollectItemStats(ItemTemplate const* proto, uint32 level = 0);
+    void CollectItemStats(ItemTemplate const* proto);
     void CollectSpellStats(uint32 spellId, float multiplier = 1.0f, Milliseconds spellCooldown = -1ms);
     void CollectEnchantStats(SpellItemEnchantmentEntry const* enchant, uint32 default_enchant_amount = 0);
     bool CanBeTriggeredByType(SpellInfo const* spellInfo, uint32 procFlags, bool strict = true);
@@ -77,6 +78,9 @@ public:
     float stats[STATS_TYPE_MAX];
 
 private:
+    void CollectWeaponDamageStats(ItemTemplate const* proto, ScalingStatValuesEntry const* ssv);
+    void CollectItemStatValues(ItemTemplate const* proto, ScalingStatDistributionEntry const* ssd,
+                               ScalingStatValuesEntry const* ssv);
     void CollectByItemStatType(uint32 itemStatType, int32 val);
     bool SpecialSpellFilter(uint32 spellId);
     bool SpecialEnchantFilter(uint32 enchantSpellId);
@@ -88,6 +92,7 @@ private:
 private:
     CollectorType type_;
     uint32 cls_;
+    int32 lvl_;
 };
 
 #endif

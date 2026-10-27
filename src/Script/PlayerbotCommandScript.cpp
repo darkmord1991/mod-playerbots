@@ -142,7 +142,7 @@ public:
             handler->PSendSysMessage("|- Padding: {} fake players. `.server info` reports {}.", fake, padded);
         }
         handler->PSendSysMessage("|- Level cap: bots {}, players {}.",
-                sPlayerbotAIConfig.randomBotMaxLevel, sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL));
+                sPlayerbotAIConfig.RandomBotMaxLevel, sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL));
 
         return true;
     }
@@ -176,8 +176,8 @@ public:
 
         if (!strcmp(args, "toggle"))
         {
-            sPlayerbotAIConfig.perfMonEnabled = !sPlayerbotAIConfig.perfMonEnabled;
-            if (sPlayerbotAIConfig.perfMonEnabled)
+            sPlayerbotAIConfig.PerfMonEnabled = !sPlayerbotAIConfig.PerfMonEnabled;
+            if (sPlayerbotAIConfig.PerfMonEnabled)
                 LOG_INFO("playerbots", "Performance monitor enabled");
             else
                 LOG_INFO("playerbots", "Performance monitor disabled");

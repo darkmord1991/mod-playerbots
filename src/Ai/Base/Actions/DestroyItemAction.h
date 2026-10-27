@@ -20,6 +20,7 @@ public:
     bool Execute(Event event) override;
 
 protected:
+    // Destroys every match. An unsaved Item is deleted here, so callers must not hold Item* across this.
     // silent: skip the "<item> destroyed" whisper. Housekeeping destroys run unattended and would otherwise
     // whisper the master once per item; an explicit "destroy" chat command still reports what it did.
     void DestroyItem(FindItemVisitor* visitor, bool silent = false);
@@ -32,6 +33,9 @@ public:
 
     bool Execute(Event event) override;
     bool isUseful() override;
+
+private:
+    bool DestroyUntilBagSpace(std::vector<uint32> const& itemIds);
 };
 
 #endif

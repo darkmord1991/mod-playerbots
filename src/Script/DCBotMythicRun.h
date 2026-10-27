@@ -42,7 +42,7 @@ namespace DCBotMythicRun
     {
         bool enabled = true;
         // Maps a bot run may be started on, keyed or not
-        // (AiPlayerbot.DCMythicBots.Dungeons).
+        // (Playerbots.DCMythicBots.Dungeons).
         std::vector<uint32> dungeons;
         uint32 maxConcurrentRuns = 1;
         uint32 botLevel = 80;

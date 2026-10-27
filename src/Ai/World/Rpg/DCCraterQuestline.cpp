@@ -64,7 +64,7 @@ namespace
         mapId = crater.mapId;
         zoneId = crater.zoneId;
 
-        std::vector<std::vector<uint32>> const& hubs = sPlayerbotAIConfig.dcCraterQuestlineHubs;
+        std::vector<std::vector<uint32>> const& hubs = sPlayerbotAIConfig.DCCraterQuestlineHubs;
 
         // Every spawn on the crater by entry. A creature spawn with creature_multispawn alternates counts
         // for each of them.
@@ -201,7 +201,7 @@ namespace
 
     QuestlineQuest const* FindQuest(uint32 questId)
     {
-        if (!sPlayerbotAIConfig.dcCraterQuestlineEnabled)
+        if (!sPlayerbotAIConfig.DCCraterQuestlineEnabled)
             return nullptr;
 
         Questline const& questline = GetQuestline();
@@ -212,7 +212,7 @@ namespace
 
 bool DCCraterQuestline::AppliesTo(Player const* bot)
 {
-    if (!sPlayerbotAIConfig.dcCraterQuestlineEnabled)
+    if (!sPlayerbotAIConfig.DCCraterQuestlineEnabled)
         return false;
 
     Questline const& questline = GetQuestline();
@@ -228,7 +228,7 @@ uint32 DCCraterQuestline::GetRank(uint32 questId)
 std::vector<uint32> const& DCCraterQuestline::GetQuests()
 {
     static std::vector<uint32> const none{};
-    return sPlayerbotAIConfig.dcCraterQuestlineEnabled ? GetQuestline().quests : none;
+    return sPlayerbotAIConfig.DCCraterQuestlineEnabled ? GetQuestline().quests : none;
 }
 
 bool DCCraterQuestline::IsPlayable(uint32 questId)

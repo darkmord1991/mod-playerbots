@@ -65,7 +65,7 @@ BotStartLocation const& BotStartLocations::GetCraterStart() { return CraterStart
 
 uint32 BotStartLocations::GetDeathKnightStartLevel()
 {
-    return std::max<uint32>(sPlayerbotAIConfig.deathKnightStartLevel,
+    return std::max<uint32>(sPlayerbotAIConfig.DeathKnightStartLevel,
                             sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
 }
 
@@ -93,9 +93,9 @@ BotStartLocation const* BotStartLocations::Get(uint8 race, uint8 cls)
 
 void CraterRoster::Load()
 {
-    uint32 const cap = sPlayerbotAIConfig.azsharaCraterMaxBots;
+    uint32 const cap = sPlayerbotAIConfig.AzsharaCraterMaxBots;
 
-    std::string prefix = sPlayerbotAIConfig.randomBotAccountPrefix;
+    std::string prefix = sPlayerbotAIConfig.RandomBotAccountPrefix;
     CharacterDatabase.EscapeString(prefix);
 
     // Most recently played first: the bots that were actually using the crater keep their slots, so a
@@ -138,7 +138,7 @@ bool CraterRoster::IsResident(uint32 guid)
 bool CraterRoster::HasFreeSlot()
 {
     std::lock_guard<std::mutex> lock(CraterRosterMutex);
-    return CraterResidents.size() < sPlayerbotAIConfig.azsharaCraterMaxBots;
+    return CraterResidents.size() < sPlayerbotAIConfig.AzsharaCraterMaxBots;
 }
 
 bool CraterRoster::Claim(uint32 guid)
@@ -147,7 +147,7 @@ bool CraterRoster::Claim(uint32 guid)
     if (CraterResidents.count(guid))
         return true;
 
-    if (CraterResidents.size() >= sPlayerbotAIConfig.azsharaCraterMaxBots)
+    if (CraterResidents.size() >= sPlayerbotAIConfig.AzsharaCraterMaxBots)
         return false;
 
     CraterResidents.insert(guid);

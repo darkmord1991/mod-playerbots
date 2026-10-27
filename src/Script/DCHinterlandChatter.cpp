@@ -29,7 +29,7 @@
  *   - a per-bot cooldown, so one bot cannot carry the conversation,
  *   - a short recent-lines memory, so the same sentence is not repeated.
  *
- * All of it is off with AiPlayerbot.DCHinterland.Chatter.Enable = 0.
+ * All of it is off with Playerbots.DCHinterland.Chatter.Enable = 0.
  *
  * STATE
  *
@@ -241,24 +241,24 @@ namespace
     {
         ChatterConfig cfg;
 
-        cfg.enabled = sConfigMgr->GetOption<bool>("AiPlayerbot.DCHinterland.Chatter.Enable", true);
-        cfg.teamGapMs = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Chatter.MinSecondsBetweenLines", 12) *
+        cfg.enabled = sConfigMgr->GetOption<bool>("Playerbots.DCHinterland.Chatter.Enable", true);
+        cfg.teamGapMs = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Chatter.MinSecondsBetweenLines", 12) *
                         IN_MILLISECONDS;
-        cfg.linesPerMinute = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Chatter.LinesPerMinute", 5);
+        cfg.linesPerMinute = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Chatter.LinesPerMinute", 5);
         cfg.botCooldownMs =
-            sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Chatter.BotCooldownSeconds", 60) * IN_MILLISECONDS;
-        cfg.recentMemory = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Chatter.RecentMemory", 6);
+            sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Chatter.BotCooldownSeconds", 60) * IN_MILLISECONDS;
+        cfg.recentMemory = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Chatter.RecentMemory", 6);
         cfg.idleMinMs =
-            sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Chatter.IdleSecondsMin", 70) * IN_MILLISECONDS;
+            sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Chatter.IdleSecondsMin", 70) * IN_MILLISECONDS;
         cfg.idleMaxMs =
-            sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Chatter.IdleSecondsMax", 160) * IN_MILLISECONDS;
-        cfg.killChance = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Chatter.KillChance", 25);
-        cfg.deathChance = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Chatter.DeathChance", 18);
-        cfg.helpChance = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Chatter.HelpChance", 30);
-        cfg.helpHealthPct = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Chatter.HelpHealthPct", 30);
-        cfg.sayChance = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Chatter.SayChance", 15);
-        cfg.emoteChance = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Chatter.EmoteChance", 35);
-        cfg.resourceCalls = sConfigMgr->GetOption<bool>("AiPlayerbot.DCHinterland.Chatter.ResourceCalls", true);
+            sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Chatter.IdleSecondsMax", 160) * IN_MILLISECONDS;
+        cfg.killChance = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Chatter.KillChance", 25);
+        cfg.deathChance = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Chatter.DeathChance", 18);
+        cfg.helpChance = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Chatter.HelpChance", 30);
+        cfg.helpHealthPct = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Chatter.HelpHealthPct", 30);
+        cfg.sayChance = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Chatter.SayChance", 15);
+        cfg.emoteChance = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Chatter.EmoteChance", 35);
+        cfg.resourceCalls = sConfigMgr->GetOption<bool>("Playerbots.DCHinterland.Chatter.ResourceCalls", true);
 
         if (cfg.idleMaxMs < cfg.idleMinMs)
             cfg.idleMaxMs = cfg.idleMinMs;

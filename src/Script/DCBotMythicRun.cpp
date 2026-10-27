@@ -148,9 +148,9 @@ namespace
     void LoadConfig()
     {
         Config cfg;
-        cfg.enabled = sConfigMgr->GetOption<bool>("AiPlayerbot.DCMythicBots.Enable", true);
+        cfg.enabled = sConfigMgr->GetOption<bool>("Playerbots.DCMythicBots.Enable", true);
 
-        std::string const dungeons = sConfigMgr->GetOption<std::string>("AiPlayerbot.DCMythicBots.Dungeons", "574");
+        std::string const dungeons = sConfigMgr->GetOption<std::string>("Playerbots.DCMythicBots.Dungeons", "574");
         std::istringstream dungeonList(dungeons);
         std::string token;
         while (std::getline(dungeonList, token, ','))
@@ -160,18 +160,18 @@ namespace
                 cfg.dungeons.push_back(*mapId);
         }
 
-        cfg.maxConcurrentRuns = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCMythicBots.MaxConcurrentRuns", 1);
-        cfg.botLevel = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCMythicBots.BotLevel", 80);
-        cfg.maxKeystoneLevel = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCMythicBots.MaxKeystoneLevel", 10);
-        cfg.enterTimeoutSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCMythicBots.EnterTimeoutSeconds", 90);
-        cfg.startDelaySeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCMythicBots.StartDelaySeconds", 3);
-        cfg.stuckSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCMythicBots.StuckSeconds", 180);
-        cfg.maxRunMinutes = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCMythicBots.MaxRunMinutes", 45);
-        cfg.pullRange = sConfigMgr->GetOption<float>("AiPlayerbot.DCMythicBots.PullRange", 30.0f);
-        cfg.regroupDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCMythicBots.RegroupDistance", 40.0f);
-        cfg.restHealthPct = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCMythicBots.RestHealthPct", 60);
-        cfg.restManaPct = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCMythicBots.RestManaPct", 50);
-        cfg.reviveDeadBots = sConfigMgr->GetOption<bool>("AiPlayerbot.DCMythicBots.ReviveDeadBots", true);
+        cfg.maxConcurrentRuns = sConfigMgr->GetOption<uint32>("Playerbots.DCMythicBots.MaxConcurrentRuns", 1);
+        cfg.botLevel = sConfigMgr->GetOption<uint32>("Playerbots.DCMythicBots.BotLevel", 80);
+        cfg.maxKeystoneLevel = sConfigMgr->GetOption<uint32>("Playerbots.DCMythicBots.MaxKeystoneLevel", 10);
+        cfg.enterTimeoutSeconds = sConfigMgr->GetOption<uint32>("Playerbots.DCMythicBots.EnterTimeoutSeconds", 90);
+        cfg.startDelaySeconds = sConfigMgr->GetOption<uint32>("Playerbots.DCMythicBots.StartDelaySeconds", 3);
+        cfg.stuckSeconds = sConfigMgr->GetOption<uint32>("Playerbots.DCMythicBots.StuckSeconds", 180);
+        cfg.maxRunMinutes = sConfigMgr->GetOption<uint32>("Playerbots.DCMythicBots.MaxRunMinutes", 45);
+        cfg.pullRange = sConfigMgr->GetOption<float>("Playerbots.DCMythicBots.PullRange", 30.0f);
+        cfg.regroupDistance = sConfigMgr->GetOption<float>("Playerbots.DCMythicBots.RegroupDistance", 40.0f);
+        cfg.restHealthPct = sConfigMgr->GetOption<uint32>("Playerbots.DCMythicBots.RestHealthPct", 60);
+        cfg.restManaPct = sConfigMgr->GetOption<uint32>("Playerbots.DCMythicBots.RestManaPct", 50);
+        cfg.reviveDeadBots = sConfigMgr->GetOption<bool>("Playerbots.DCMythicBots.ReviveDeadBots", true);
 
         std::lock_guard<std::recursive_mutex> lock(sMutex);
         sConfig = cfg;
@@ -836,7 +836,7 @@ namespace
             std::lock_guard<std::recursive_mutex> lock(sMutex);
             if (sRuns.size() >= cfg.maxConcurrentRuns)
             {
-                handler->PSendSysMessage("{} bot run(s) already active (AiPlayerbot.DCMythicBots.MaxConcurrentRuns).",
+                handler->PSendSysMessage("{} bot run(s) already active (Playerbots.DCMythicBots.MaxConcurrentRuns).",
                     sRuns.size());
                 return;
             }
@@ -1014,7 +1014,7 @@ namespace DCBotMythicRun
         Config const cfg = GetConfig();
         if (!cfg.enabled)
         {
-            handler->SendSysMessage("Bot runs are disabled (AiPlayerbot.DCMythicBots.Enable).");
+            handler->SendSysMessage("Bot runs are disabled (Playerbots.DCMythicBots.Enable).");
             return true;
         }
 
@@ -1046,7 +1046,7 @@ namespace DCBotMythicRun
 
         if (std::find(cfg.dungeons.begin(), cfg.dungeons.end(), mapId) == cfg.dungeons.end())
         {
-            handler->PSendSysMessage("Map {} is not in AiPlayerbot.DCMythicBots.Dungeons.", mapId);
+            handler->PSendSysMessage("Map {} is not in Playerbots.DCMythicBots.Dungeons.", mapId);
             return true;
         }
 
@@ -1067,7 +1067,7 @@ namespace DCBotMythicRun
         Config const cfg = GetConfig();
         if (!cfg.enabled)
         {
-            handler->SendSysMessage("Bot runs are disabled (AiPlayerbot.DCMythicBots.Enable).");
+            handler->SendSysMessage("Bot runs are disabled (Playerbots.DCMythicBots.Enable).");
             return true;
         }
 
@@ -1097,7 +1097,7 @@ namespace DCBotMythicRun
 
         if (std::find(cfg.dungeons.begin(), cfg.dungeons.end(), mapId) == cfg.dungeons.end())
         {
-            handler->PSendSysMessage("Map {} is not in AiPlayerbot.DCMythicBots.Dungeons.", mapId);
+            handler->PSendSysMessage("Map {} is not in Playerbots.DCMythicBots.Dungeons.", mapId);
             return true;
         }
 

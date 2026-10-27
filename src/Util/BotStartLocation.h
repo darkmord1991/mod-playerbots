@@ -37,7 +37,7 @@ namespace BotStartLocations
 
     // The DarkChaos onboarding hub on Azshara Crater -- the position `playercreateinfo` gives every
     // race. Unlike the stock starts this one is handed out to only a limited number of bots, because
-    // the crater is a small zone: see AiPlayerbot.AzsharaCraterMaxBots.
+    // the crater is a small zone: see Playerbots.AzsharaCraterMaxBots.
     BotStartLocation const& GetCraterStart();
 
     // Level a death knight bot starts at when it is placed at the Ebon Hold start above rather than
@@ -54,7 +54,7 @@ namespace BotStartLocations
     uint32 GetDeathKnightStartLevel();
 }
 
-// DarkChaos: the bots that hold one of the AiPlayerbot.AzsharaCraterMaxBots slots on Azshara Crater.
+// DarkChaos: the bots that hold one of the Playerbots.AzsharaCraterMaxBots slots on Azshara Crater.
 //
 // A slot belongs to a character whether it is logged in or not, from the moment it is created on the
 // crater or teleported onto it until it is teleported off. The cap used to be checked against the

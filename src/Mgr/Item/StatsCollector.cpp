@@ -17,7 +17,7 @@
 
 namespace
 {
-// Mirrors the row lookup in Player::_ApplyItemBonuses: the wearer's level, clamped to the
+// DarkChaos: mirrors the row lookup in Player::_ApplyItemBonuses: the wearer's level, clamped to the
 // distribution's MaxLevel, walking down to the nearest level the ScalingStatValues store has.
 ScalingStatValuesEntry const* FindScalingStatValues(ScalingStatDistributionEntry const* ssd, uint32 level)
 {
@@ -41,7 +41,10 @@ ScalingStatValuesEntry const* FindScalingStatValues(ScalingStatDistributionEntry
 }
 }
 
-StatsCollector::StatsCollector(CollectorType type, int32 cls) : type_(type), cls_(cls) { Reset(); }
+StatsCollector::StatsCollector(CollectorType type, int32 cls, int32 lvl) : type_(type), cls_(cls), lvl_(lvl)
+{
+    Reset();
+}
 
 void StatsCollector::Reset()
 {
@@ -51,78 +54,39 @@ void StatsCollector::Reset()
     }
 }
 
-void StatsCollector::CollectItemStats(ItemTemplate const* proto, uint32 level)
+void StatsCollector::CollectItemStats(ItemTemplate const* proto)
 {
-    // DarkChaos: heirlooms keep their real stats in ScalingStatDistribution / ScalingStatValues,
-    // not in the template, which holds placeholders or nothing at all. Read the template instead
-    // and a heirloom scores as nearly empty, loses to any green and is swapped out at the next
-    // re-gear. Resolved here exactly as the core applies them on equip (Player::_ApplyItemBonuses,
-    // Player::_ApplyWeaponDamage). Without a ScalingStatValue mask the core ignores the scaling
-    // tables, so such items -- and level 0 -- keep the template path.
-    ScalingStatDistributionEntry const* ssd = nullptr;
-    ScalingStatValuesEntry const* ssv = nullptr;
-    if (level && proto->ScalingStatValue)
-    {
-        if (proto->ScalingStatDistribution)
-            ssd = sScalingStatDistributionStore.LookupEntry(proto->ScalingStatDistribution);
+    // Heirlooms and other scaling items hold their real stats in DBC, keyed by wearer level (Player::_ApplyItemBonuses)
+    ScalingStatDistributionEntry const* ssd =
+        proto->ScalingStatDistribution ? sScalingStatDistributionStore.LookupEntry(proto->ScalingStatDistribution)
+                                       : nullptr;
 
-        ssv = FindScalingStatValues(ssd, level);
+    uint32 const ssdLevel = lvl_ > 0 ? uint32(lvl_) : 0;
+
+    // Without a wearer level (lvl_ -1) a scaling item keeps its template values. FindScalingStatValues clamps
+    // to the distribution's MaxLevel and, like the core, walks down past rows ScalingStatValues.dbc lacks.
+    ScalingStatValuesEntry const* ssv =
+        proto->ScalingStatValue && ssdLevel ? FindScalingStatValues(ssd, ssdLevel) : nullptr;
+
+    CollectWeaponDamageStats(proto, ssv);
+    CollectItemStatValues(proto, ssd, ssv);
+
+    if (ssv)
+    {
+        if (uint32 spellBonus = ssv->getSpellBonus(proto->ScalingStatValue))
+            CollectByItemStatType(ITEM_MOD_SPELL_POWER, spellBonus);
     }
 
-    if (proto->IsWeapon())
-    {
-        // A scaling weapon's damage range is centred on the level's dpsMod, so that is its DPS.
-        uint32 const scaledDps = ssv ? ssv->getDPSMod(proto->ScalingStatValue) : 0;
-        float val = scaledDps ? float(scaledDps)
-                              : (proto->Damage[0].DamageMin + proto->Damage[0].DamageMax) * 1000 / 2 / proto->Delay;
-        if (proto->IsRangedWeapon())
-            stats[STATS_TYPE_RANGED_DPS] += val;
-        else
-        {
-            stats[STATS_TYPE_MELEE_DPS] += val;
-            // Feral forms convert weapon DPS into attack power, so treat it as attack power for Feral Druids.
-            if (cls_ == CLASS_DRUID && (type_ & CollectorType::MELEE))
-                stats[STATS_TYPE_ATTACK_POWER] += proto->getFeralBonus();
-        }
-    }
-
-    // An armor curve replaces the template armor; a mask with no armor bit keeps it.
     uint32 armor = proto->Armor;
     if (ssv)
-        if (uint32 const scaledArmor = ssv->getArmorMod(proto->ScalingStatValue))
-            armor = scaledArmor;
+    {
+        // An ssv entry exists only for scaling items, so the scaled armor always replaces the template value.
+        if (uint32 ssvArmor = ssv->getArmorMod(proto->ScalingStatValue))
+            armor = ssvArmor;
+    }
 
     stats[STATS_TYPE_ARMOR] += armor;
     stats[STATS_TYPE_BLOCK_VALUE] += proto->Block;
-
-    if (ssv)
-    {
-        // The core takes a scaling item's stats from the distribution alone. With no distribution
-        // row the item applies no stats in game, so it scores none here either.
-        if (ssd)
-        {
-            uint32 const multiplier = ssv->getssdMultiplier(proto->ScalingStatValue);
-            for (uint8 i = 0; i < MAX_ITEM_PROTO_STATS; ++i)
-            {
-                if (ssd->StatMod[i] < 0)
-                    continue;
-
-                CollectByItemStatType(ssd->StatMod[i], int32(multiplier * ssd->Modifier[i] / 10000));
-            }
-        }
-
-        if (uint32 const spellPower = ssv->getSpellBonus(proto->ScalingStatValue))
-            CollectByItemStatType(ITEM_MOD_SPELL_POWER, int32(spellPower));
-    }
-    else
-    {
-        for (uint32 i = 0; i < proto->StatsCount; i++)
-        {
-            _ItemStat const& stat = proto->ItemStat[i];
-            int32 const& val = stat.ItemStatValue;
-            CollectByItemStatType(stat.ItemStatType, val);
-        }
-    }
     for (uint8 j = 0; j < MAX_ITEM_PROTO_SPELLS; j++)
     {
         switch (proto->Spells[j].SpellTrigger)
@@ -151,6 +115,71 @@ void StatsCollector::CollectItemStats(ItemTemplate const* proto, uint32 level)
     {
         if (SpellItemEnchantmentEntry const* enchant = sSpellItemEnchantmentStore.LookupEntry(proto->socketBonus))
             CollectEnchantStats(enchant);
+    }
+}
+
+void StatsCollector::CollectWeaponDamageStats(ItemTemplate const* proto, ScalingStatValuesEntry const* ssv)
+{
+    if (!proto->IsWeapon() || proto->Delay == 0)
+        return;
+
+    int32 extraDps = ssv ? ssv->getDPSMod(proto->ScalingStatValue) : 0;
+    float dps = 0.0f;
+
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
+    {
+        float minDamage = proto->Damage[i].DamageMin;
+        float maxDamage = proto->Damage[i].DamageMax;
+
+        // Scaling replaces the first damage entry: min 70% / max 130% of the scaled average, 80% / 120% two-hand.
+        if (extraDps && i == 0)
+        {
+            float average = extraDps * proto->Delay / 1000.0f;
+            float mod = ssv->IsTwoHand(proto->ScalingStatValue) ? 0.2f : 0.3f;
+
+            minDamage = (1.0f - mod) * average;
+            maxDamage = (1.0f + mod) * average;
+        }
+
+        dps += (minDamage + maxDamage) * 1000 / 2 / proto->Delay;
+    }
+
+    if (proto->IsRangedWeapon())
+    {
+        stats[STATS_TYPE_RANGED_DPS] += dps;
+        return;
+    }
+
+    stats[STATS_TYPE_MELEE_DPS] += dps;
+    // Feral forms convert weapon DPS into attack power, so treat it as attack power for Feral Druids.
+    if (cls_ == CLASS_DRUID && (type_ & CollectorType::MELEE))
+        stats[STATS_TYPE_ATTACK_POWER] += proto->getFeralBonus(extraDps);
+}
+
+void StatsCollector::CollectItemStatValues(ItemTemplate const* proto, ScalingStatDistributionEntry const* ssd,
+                                           ScalingStatValuesEntry const* ssv)
+{
+    if (ssv)
+    {
+        // A scaling item draws its stats from the distribution entry alone; its template stats are ignored, as in core.
+        if (!ssd)
+            return;
+
+        uint32 multiplier = ssv->getssdMultiplier(proto->ScalingStatValue);
+        for (uint8 i = 0; i < MAX_ITEM_PROTO_STATS; ++i)
+        {
+            if (ssd->StatMod[i] < 0)
+                continue;
+
+            CollectByItemStatType(ssd->StatMod[i], int32(multiplier * ssd->Modifier[i] / 10000));
+        }
+        return;
+    }
+
+    for (uint32 i = 0; i < proto->StatsCount; ++i)
+    {
+        _ItemStat const& stat = proto->ItemStat[i];
+        CollectByItemStatType(stat.ItemStatType, stat.ItemStatValue);
     }
 }
 
@@ -323,6 +352,19 @@ void StatsCollector::CollectEnchantStats(SpellItemEnchantmentEntry const* enchan
                     break;
                 }
                 CollectByItemStatType(enchant_spell_id, enchant_amount);
+                break;
+            }
+            case ITEM_ENCHANTMENT_TYPE_RESISTANCE:
+            {
+                // spellid holds the school; school 0 is armor (e.g. Enchant Cloak - Superior Defense)
+                if (enchant_spell_id != SPELL_SCHOOL_NORMAL)
+                    break;
+
+                // for item random suffix
+                if (!enchant_amount)
+                    enchant_amount = default_enchant_amount;
+
+                stats[STATS_TYPE_ARMOR] += enchant_amount;
                 break;
             }
             default:

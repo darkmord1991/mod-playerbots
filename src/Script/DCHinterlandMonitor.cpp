@@ -66,13 +66,13 @@ namespace
     {
         MonitorConfig cfg;
 
-        cfg.enabled = sConfigMgr->GetOption<bool>("AiPlayerbot.DCHinterland.Monitor.Enable", true);
+        cfg.enabled = sConfigMgr->GetOption<bool>("Playerbots.DCHinterland.Monitor.Enable", true);
         cfg.sampleMs =
-            sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Monitor.SampleSeconds", 3) * IN_MILLISECONDS;
+            sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Monitor.SampleSeconds", 3) * IN_MILLISECONDS;
         cfg.reportMs =
-            sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Monitor.ReportSeconds", 60) * IN_MILLISECONDS;
-        cfg.movedDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.Monitor.MovedDistance", 3.0f);
-        cfg.awayDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.Monitor.AwayDistance", 60.0f);
+            sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Monitor.ReportSeconds", 60) * IN_MILLISECONDS;
+        cfg.movedDistance = sConfigMgr->GetOption<float>("Playerbots.DCHinterland.Monitor.MovedDistance", 3.0f);
+        cfg.awayDistance = sConfigMgr->GetOption<float>("Playerbots.DCHinterland.Monitor.AwayDistance", 60.0f);
 
         if (!cfg.sampleMs)
             cfg.sampleMs = IN_MILLISECONDS;
@@ -554,7 +554,7 @@ namespace DCHinterlandMonitor
 
         if (!s_cfg.enabled)
         {
-            handler->PSendSysMessage("HLBG bot monitoring is off (AiPlayerbot.DCHinterland.Monitor.Enable = 0).");
+            handler->PSendSysMessage("HLBG bot monitoring is off (Playerbots.DCHinterland.Monitor.Enable = 0).");
             return true;
         }
 

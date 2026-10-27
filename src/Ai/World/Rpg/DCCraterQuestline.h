@@ -19,7 +19,7 @@ class Player;
 // The crater quests have no quest_template_addon chains, so nothing stops a bot from taking them in any
 // order, and the New RPG strategy does exactly that: it accepts whatever a quest giver it happens to walk
 // past offers, works on a random quest from its log, and never looks for the next hub. The questline
-// fixes the order instead: hub by hub as listed in AiPlayerbot.DCCraterQuestline.Hubs, and within a hub
+// fixes the order instead: hub by hub as listed in Playerbots.DCCraterQuestline.Hubs, and within a hub
 // by quest level, with the quest that sends the player on to the next hub last.
 //
 // Built once, on first use, from ObjectMgr; read-only afterwards, so safe from the map threads.

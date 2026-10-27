@@ -195,7 +195,7 @@ bool IsInCombatValue::Calculate()
 
                 if (member->IsInCombat() &&
                     ServerFacade::instance().IsDistanceLessOrEqualThan(ServerFacade::instance().GetDistance2d(member, bot),
-                                                             PlayerbotAIConfig::instance().reactDistance))
+                                                             PlayerbotAIConfig::Instance().ReactDistance))
                     return true;
             }
         }

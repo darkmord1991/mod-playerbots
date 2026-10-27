@@ -79,17 +79,17 @@ namespace
 
     void LoadConfig()
     {
-        s_cfg.enabled          = sConfigMgr->GetOption<bool>("AiPlayerbot.DCCosmetics.Enable", true);
-        s_cfg.mounts           = sConfigMgr->GetOption<bool>("AiPlayerbot.DCCosmetics.Mounts.Enable", true);
-        s_cfg.mountsPerTier    = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCCosmetics.Mounts.PerTier", 3);
-        s_cfg.mountMaxSpellId  = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCCosmetics.Mounts.MaxSpellId", 0);
-        s_cfg.companions       = sConfigMgr->GetOption<bool>("AiPlayerbot.DCCosmetics.Companions.Enable", true);
-        s_cfg.companionChance  = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCCosmetics.Companions.Chance", 35);
+        s_cfg.enabled          = sConfigMgr->GetOption<bool>("Playerbots.DCCosmetics.Enable", true);
+        s_cfg.mounts           = sConfigMgr->GetOption<bool>("Playerbots.DCCosmetics.Mounts.Enable", true);
+        s_cfg.mountsPerTier    = sConfigMgr->GetOption<uint32>("Playerbots.DCCosmetics.Mounts.PerTier", 3);
+        s_cfg.mountMaxSpellId  = sConfigMgr->GetOption<uint32>("Playerbots.DCCosmetics.Mounts.MaxSpellId", 0);
+        s_cfg.companions       = sConfigMgr->GetOption<bool>("Playerbots.DCCosmetics.Companions.Enable", true);
+        s_cfg.companionChance  = sConfigMgr->GetOption<uint32>("Playerbots.DCCosmetics.Companions.Chance", 35);
         s_cfg.companionsInBg   =
-            sConfigMgr->GetOption<bool>("AiPlayerbot.DCCosmetics.Companions.InBattlegrounds", false);
-        s_cfg.petSkins         = sConfigMgr->GetOption<bool>("AiPlayerbot.DCCosmetics.PetSkins.Enable", true);
-        s_cfg.hunterSkinChance = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCCosmetics.PetSkins.HunterChance", 70);
-        s_cfg.maxPetScale      = sConfigMgr->GetOption<float>("AiPlayerbot.DCCosmetics.PetSkins.MaxScale", 1.6f);
+            sConfigMgr->GetOption<bool>("Playerbots.DCCosmetics.Companions.InBattlegrounds", false);
+        s_cfg.petSkins         = sConfigMgr->GetOption<bool>("Playerbots.DCCosmetics.PetSkins.Enable", true);
+        s_cfg.hunterSkinChance = sConfigMgr->GetOption<uint32>("Playerbots.DCCosmetics.PetSkins.HunterChance", 70);
+        s_cfg.maxPetScale      = sConfigMgr->GetOption<float>("Playerbots.DCCosmetics.PetSkins.MaxScale", 1.6f);
 
         s_cfg.mountsPerTier    = std::min<uint32>(s_cfg.mountsPerTier, 10);
         s_cfg.companionChance  = std::min<uint32>(s_cfg.companionChance, 100);
@@ -372,11 +372,11 @@ namespace
         // disagree about when a bot may ride a given tier.
         switch (tier)
         {
-            case MOUNT_TIER_GROUND_SLOW: return sPlayerbotAIConfig.useGroundMountAtMinLevel;
-            case MOUNT_TIER_GROUND_FAST: return sPlayerbotAIConfig.useFastGroundMountAtMinLevel;
-            case MOUNT_TIER_FLY_SLOW:    return sPlayerbotAIConfig.useFlyMountAtMinLevel;
+            case MOUNT_TIER_GROUND_SLOW: return sPlayerbotAIConfig.UseGroundMountAtMinLevel;
+            case MOUNT_TIER_GROUND_FAST: return sPlayerbotAIConfig.UseFastGroundMountAtMinLevel;
+            case MOUNT_TIER_FLY_SLOW:    return sPlayerbotAIConfig.UseFlyMountAtMinLevel;
             case MOUNT_TIER_FLY_FAST:
-            default:                     return sPlayerbotAIConfig.useFastFlyMountAtMinLevel;
+            default:                     return sPlayerbotAIConfig.UseFastFlyMountAtMinLevel;
         }
     }
 

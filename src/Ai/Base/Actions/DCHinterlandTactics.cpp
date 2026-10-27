@@ -42,20 +42,20 @@ namespace
         static HLBGConfig const cfg = []
         {
             HLBGConfig c;
-            c.enabled = sConfigMgr->GetOption<bool>("AiPlayerbot.DCHinterland.Enable", true);
-            c.repickSecondsMin = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.RepickSecondsMin", 45);
-            c.repickSecondsMax = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.RepickSecondsMax", 90);
-            c.arrivalDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.ArrivalDistance", 18.0f);
-            c.engageDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.EngageDistance", 60.0f);
-            c.stallSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.StallSeconds", 20);
-            c.stallDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.StallDistance", 3.0f);
+            c.enabled = sConfigMgr->GetOption<bool>("Playerbots.DCHinterland.Enable", true);
+            c.repickSecondsMin = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.RepickSecondsMin", 45);
+            c.repickSecondsMax = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.RepickSecondsMax", 90);
+            c.arrivalDistance = sConfigMgr->GetOption<float>("Playerbots.DCHinterland.ArrivalDistance", 18.0f);
+            c.engageDistance = sConfigMgr->GetOption<float>("Playerbots.DCHinterland.EngageDistance", 60.0f);
+            c.stallSeconds = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.StallSeconds", 20);
+            c.stallDistance = sConfigMgr->GetOption<float>("Playerbots.DCHinterland.StallDistance", 3.0f);
             c.unstickTeleportStrikes =
-                sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.UnstickTeleportStrikes", 3);
-            c.defenderRoles = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.DefenderRoles", 2);
-            c.nodeRadius = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.Front.NodeRadius", 45.0f);
-            c.presenceRadius = sConfigMgr->GetOption<float>("AiPlayerbot.DCHinterland.Front.PresenceRadius", 60.0f);
-            c.defenderDwellMin = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.DefenderDwellMin", 20);
-            c.defenderDwellMax = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.DefenderDwellMax", 40);
+                sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.UnstickTeleportStrikes", 3);
+            c.defenderRoles = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Front.DefenderRoles", 2);
+            c.nodeRadius = sConfigMgr->GetOption<float>("Playerbots.DCHinterland.Front.NodeRadius", 45.0f);
+            c.presenceRadius = sConfigMgr->GetOption<float>("Playerbots.DCHinterland.Front.PresenceRadius", 60.0f);
+            c.defenderDwellMin = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Front.DefenderDwellMin", 20);
+            c.defenderDwellMax = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Front.DefenderDwellMax", 40);
 
             if (c.repickSecondsMax < c.repickSecondsMin)
                 c.repickSecondsMax = c.repickSecondsMin;
@@ -63,19 +63,19 @@ namespace
                 c.defenderDwellMax = c.defenderDwellMin;
 
             DCHinterlandFront::Config front;
-            front.advanceVotes = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.AdvanceVotes", 3);
-            front.holdSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.HoldSeconds", 10);
-            front.regroupSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.RegroupSeconds", 45);
+            front.advanceVotes = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Front.AdvanceVotes", 3);
+            front.holdSeconds = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Front.HoldSeconds", 10);
+            front.regroupSeconds = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Front.RegroupSeconds", 45);
             front.voteWindowSeconds =
-                sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.VoteWindowSeconds", 6);
+                sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Front.VoteWindowSeconds", 6);
             front.advanceQuorumPct =
-                sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.AdvanceQuorumPct", 50);
-            front.minPresence = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.MinPresence", 3);
+                sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Front.AdvanceQuorumPct", 50);
+            front.minPresence = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Front.MinPresence", 3);
             front.defenderRoles = c.defenderRoles;
             front.presenceRadius = c.presenceRadius;
             front.losingWindowSeconds =
-                sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.LosingWindowSeconds", 60);
-            front.losingMinDeaths = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHinterland.Front.LosingMinDeaths", 6);
+                sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Front.LosingWindowSeconds", 60);
+            front.losingMinDeaths = sConfigMgr->GetOption<uint32>("Playerbots.DCHinterland.Front.LosingMinDeaths", 6);
             DCHinterlandFront::SetConfig(front);
 
             return c;

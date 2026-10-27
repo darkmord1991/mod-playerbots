@@ -43,14 +43,14 @@ namespace
 
     void LoadConfig()
     {
-        s_cfg.enabled         = sConfigMgr->GetOption<bool>("AiPlayerbot.DCItemUpgrade.Enable", true);
-        s_cfg.maxStepsPerRun  = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.StepsPerRun", 3);
-        s_cfg.minLevel        = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.MinLevel", 10);
-        s_cfg.cooldownSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.CooldownSeconds", 3600);
-        s_cfg.currencyReserve = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.CurrencyReserve", 0);
+        s_cfg.enabled         = sConfigMgr->GetOption<bool>("Playerbots.DCItemUpgrade.Enable", true);
+        s_cfg.maxStepsPerRun  = sConfigMgr->GetOption<uint32>("Playerbots.DCItemUpgrade.StepsPerRun", 3);
+        s_cfg.minLevel        = sConfigMgr->GetOption<uint32>("Playerbots.DCItemUpgrade.MinLevel", 10);
+        s_cfg.cooldownSeconds = sConfigMgr->GetOption<uint32>("Playerbots.DCItemUpgrade.CooldownSeconds", 3600);
+        s_cfg.currencyReserve = sConfigMgr->GetOption<uint32>("Playerbots.DCItemUpgrade.CurrencyReserve", 0);
 
         s_cfg.maxLevelPercent =
-            std::min<uint32>(sConfigMgr->GetOption<uint32>("AiPlayerbot.DCItemUpgrade.MaxLevelPercent", 100), 100);
+            std::min<uint32>(sConfigMgr->GetOption<uint32>("Playerbots.DCItemUpgrade.MaxLevelPercent", 100), 100);
     }
 
     uint8 EffectiveMaxLevel(uint8 tierMaxLevel)

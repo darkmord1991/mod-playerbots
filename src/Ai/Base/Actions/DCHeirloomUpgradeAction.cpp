@@ -54,12 +54,12 @@ namespace
 
     void LoadConfig()
     {
-        s_cfg.enabled         = sConfigMgr->GetOption<bool>("AiPlayerbot.DCHeirloom.Enable", true);
-        s_cfg.grantStarter    = sConfigMgr->GetOption<bool>("AiPlayerbot.DCHeirloom.GrantStarter", true);
-        s_cfg.stepsPerRun     = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHeirloom.StepsPerRun", 2);
-        s_cfg.minLevel        = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHeirloom.MinLevel", 10);
-        s_cfg.cooldownSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHeirloom.CooldownSeconds", 3600);
-        s_cfg.forcedPackage   = sConfigMgr->GetOption<uint32>("AiPlayerbot.DCHeirloom.ForcePackage", 0);
+        s_cfg.enabled         = sConfigMgr->GetOption<bool>("Playerbots.DCHeirloom.Enable", true);
+        s_cfg.grantStarter    = sConfigMgr->GetOption<bool>("Playerbots.DCHeirloom.GrantStarter", true);
+        s_cfg.stepsPerRun     = sConfigMgr->GetOption<uint32>("Playerbots.DCHeirloom.StepsPerRun", 2);
+        s_cfg.minLevel        = sConfigMgr->GetOption<uint32>("Playerbots.DCHeirloom.MinLevel", 10);
+        s_cfg.cooldownSeconds = sConfigMgr->GetOption<uint32>("Playerbots.DCHeirloom.CooldownSeconds", 3600);
+        s_cfg.forcedPackage   = sConfigMgr->GetOption<uint32>("Playerbots.DCHeirloom.ForcePackage", 0);
     }
 
     // Which stat package suits this bot.
