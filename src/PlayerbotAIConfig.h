@@ -139,6 +139,7 @@ public:
     bool BotAutologin;
     std::string RandomBotMapsAsString;
     float ProbTeleToBankers;
+    float ProbTeleToQuestGivers;
     bool EnableWeightTeleToCityBankers;
     int WeightTeleToStormwind;
     int WeightTeleToIronforge;
@@ -391,6 +392,7 @@ public:
     bool DropObsoleteQuests;
     bool AllowLearnTrainerSpells;
     bool AutoPickTalents;
+    bool AutoPickTalentsForPlayerControlledBots;
     bool AutoUpgradeEquip;
     int32 HunterWolfPet;
     int32 DefaultPetStance;
@@ -398,6 +400,8 @@ public:
     bool AutoLearnTrainerSpells;
     bool AutoDoQuests;
     bool EnableNewRpgStrategy;
+    float RpgTargetSearchDistance;
+    bool CollectDetailedQuestStats;
 
     // Azshara Crater is a small custom leveling zone, so the number of bots on it is capped and
     // they stay put until they outgrow it. See BotStartLocations::GetCraterStart().
