@@ -87,6 +87,8 @@ void NewRpgInfo::ChangeToIdle()
 {
     startT = getMSTime();
     data = Idle{};
+    questGiver.Clear();
+    ignoredQuestGivers.clear();
 }
 
 bool NewRpgInfo::CanChangeTo(NewRpgStatus)
@@ -98,6 +100,8 @@ void NewRpgInfo::Reset()
 {
     data = Idle{};
     startT = getMSTime();
+    questGiver.Clear();
+    ignoredQuestGivers.clear();
 }
 
 void NewRpgInfo::SetMoveFarTo(WorldPosition pos)

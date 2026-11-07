@@ -480,9 +480,8 @@ std::string const RandomPlayerbotFactory::CreateRandomBotName(NameRaceAndGender 
 }
 
 // Calculates the total number of required accounts, either using the specified randomBotAccountCount
-// or determining it dynamically based on MaxRandomBots, EnablePeriodicOnlineOffline and its ratio,
-// and AddClassAccountPoolSize. The system also factors in the types of existing account, as assigned by
-// AssignAccountTypes()
+// or determining it dynamically based on MaxRandomBots and AddClassAccountPoolSize.
+// The system also factors in the types of existing account, as assigned by AssignAccountTypes().
 uint32 RandomPlayerbotFactory::CalculateTotalAccountCount()
 {
     // Reset account types if features are disabled
@@ -626,26 +625,22 @@ uint32 RandomPlayerbotFactory::CalculateNeededRndBotAccounts()
     int divisor = CalculateAvailableCharsPerAccount();
 
     int maxBots = sPlayerbotAIConfig.MaxRandomBots;
-    // Take periodic online/offline into account
-    if (sPlayerbotAIConfig.EnablePeriodicOnlineOffline)
-        maxBots *= sPlayerbotAIConfig.PeriodicOnlineOfflineRatio;
-
     maxBots += CountRetiredRandomBots();
 
     // Result is rounded up for maxBots not cleanly divisible by the divisor
     return (maxBots + divisor - 1) / divisor;
 }
 
-// Random bots taken out of the rotation for good. RetireBot() gives them a "logout" lease far longer
-// than any rotation lease ProcessBot() hands out (at most MaxRandomBotInWorldTime), so the lease length
-// is what separates a retirement from an ordinary logout. A lapsed lease no longer counts: that bot logs
-// in once more and is retired again.
+// Random bots taken out of the rotation for good. RetireBot() gives them a "logout" lease of years; since
+// upstream #2774 removed the periodic rotation it is the only writer of that event, and the DAY floor only
+// skips the hours-long rotation leases left over from before. A lapsed lease no longer counts: that bot
+// logs in once more and is retired again.
 uint32 RandomPlayerbotFactory::CountRetiredRandomBots()
 {
     QueryResult result = PlayerbotsDatabase.Query(
         "SELECT COUNT(DISTINCT bot) FROM playerbots_random_bots WHERE owner = 0 AND event = 'logout' "
         "AND value <> 0 AND validIn > {} AND `time` + validIn > UNIX_TIMESTAMP()",
-        sPlayerbotAIConfig.MaxRandomBotInWorldTime);
+        uint32(DAY));
 
     return result ? static_cast<uint32>((*result)[0].Get<uint64>()) : 0;
 }

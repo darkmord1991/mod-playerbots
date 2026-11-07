@@ -258,6 +258,9 @@ private:
     float activityMod = 0.25;
     bool _isBotInitializing = true;
     bool _isBotLogging = true;
+    bool _botCountRolled = false;
+    time_t _nextScheduledCountUpdate = 0;
+    uint32 _rolledCountMode = 0;
     NewRpgStatistic rpgStasticTotal;
     void LoadEventCache(uint32 bot);
     // Caller must hold _eventCacheMutex; the pointer is only valid while it is held.
@@ -275,6 +278,9 @@ private:
     time_t DelayLoginBotsTimer;
     time_t printStatsTimer;
     uint32 AddRandomBots();
+    uint32 RemoveRandomBots();
+    uint32 GetScheduledBotCount();
+    bool IsRemovableBot(Player* bot);
     bool ProcessBot(uint32 bot);
     void ScheduleRandomize(uint32 bot, uint32 time);
     void RandomTeleport(Player* bot);
