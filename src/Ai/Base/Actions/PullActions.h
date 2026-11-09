@@ -62,6 +62,7 @@ public:
     PullAction(PlayerbotAI* botAI, std::string const name = "pull action");
 
     bool Execute(Event event) override;
+    bool isUseful() override;
     bool isPossible() override;
     std::vector<NextAction> getPrerequisites() override;
     Unit* GetTarget() override;

@@ -55,6 +55,10 @@ namespace
         { RACE_ZANDALARI_TROLL,   RACE_TROLL    }, // Horde    -> Valley of Trials, Durotar
         { RACE_KUL_TIRAN,         RACE_HUMAN    }, // Alliance -> Northshire, Elwynn Forest
         { RACE_DARK_IRON_DWARF,   RACE_DWARF    }, // Alliance -> Coldridge Valley, Dun Morogh
+        { RACE_DRAKKARI_TROLL,    RACE_TROLL    }, // Horde    -> Valley of Trials, Durotar
+        { RACE_VOID_ELF,          RACE_HUMAN    }, // Alliance -> Northshire, Elwynn Forest
+        { RACE_LIGHTFORGED_DRAENEI, RACE_DRAENEI }, // Alliance -> Ammen Vale, Azuremyst Isle
+        { RACE_MAGHAR_ORC,        RACE_ORC      }, // Horde    -> Valley of Trials, Durotar
     };
 
     std::mutex CraterRosterMutex;

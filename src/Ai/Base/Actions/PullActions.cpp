@@ -209,6 +209,15 @@ bool PullAction::Execute(Event event)
     return true;
 }
 
+bool PullAction::isUseful()
+{
+    // The engine asks isUseful() before isPossible(), and this action is built before the class's pull
+    // strategy exists, so without this the spell stays "pull action" (spell id 0) and the pull is never useful.
+    InitPullAction();
+
+    return CastSpellAction::isUseful();
+}
+
 bool PullAction::isPossible()
 {
     InitPullAction();

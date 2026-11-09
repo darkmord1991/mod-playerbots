@@ -509,6 +509,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 /*elapsed*/, bool /*minimal*/)
         // Update bots
         {
             DarkChaos::ScopedUpdateProfiler _prof("Playerbots.UpdateBots");
+            _repeatRandomizeBudget.store(MAX_REPEAT_RANDOMIZE_PER_PASS);
+            _repeatRandomizeDeferred.store(0);
             for (auto bot : availableBots)
             {
                 if (!GetPlayerBot(bot))
@@ -522,6 +524,10 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 /*elapsed*/, bool /*minimal*/)
                 if (!updateBots)
                     break;
             }
+
+            if (uint32 const deferred = _repeatRandomizeDeferred.load())
+                LOG_DEBUG("playerbots", "{} bot randomizations deferred to a later pass ({} per pass)",
+                          deferred, MAX_REPEAT_RANDOMIZE_PER_PASS);
         }
 
         if (loginBots && botLoading.empty())
@@ -1822,7 +1828,16 @@ bool RandomPlayerbotMgr::ProcessBot(Player* bot)
     {
         // randomize
         uint32 randomize = GetEventValue(botId, "randomize");
-        if (!randomize)
+
+        // Same test as Randomize(): these bots get RandomizeFirst, their first level and gear, so they never wait.
+        bool const needsFirstRandomize = bot->GetLevel() < 3 ||
+            (bot->GetLevel() < 56 && bot->getClass() == CLASS_DEATH_KNIGHT);
+        if (!randomize && !needsFirstRandomize && _repeatRandomizeBudget.fetch_sub(1) <= 0)
+        {
+            // Over this pass's budget: the event stays due and a later pass picks the bot up.
+            ++_repeatRandomizeDeferred;
+        }
+        else if (!randomize)
         {
             // bool randomiser = true;
             // if (player->GetGuildId())

@@ -191,7 +191,7 @@ namespace
         LINE_IDLE,
         LINE_WIN,
         LINE_LOSE,
-        LINE_MAX
+        LINE_POOL_COUNT // not LINE_MAX: glibc <limits.h> defines LINE_MAX as a macro
     };
 
     struct LinePool
@@ -200,7 +200,7 @@ namespace
         uint32 count;
     };
 
-    constexpr LinePool POOLS[LINE_MAX] = {
+    constexpr LinePool POOLS[LINE_POOL_COUNT] = {
         { LINES_PREP, uint32(std::size(LINES_PREP)) },
         { LINES_START, uint32(std::size(LINES_START)) },
         { LINES_KILL, uint32(std::size(LINES_KILL)) },

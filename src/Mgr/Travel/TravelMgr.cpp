@@ -1348,12 +1348,9 @@ bool ExploreTravelDestination::isActive(Player* bot)
     if (area->exploreFlag == 0xffff)
         return false;
 
-    int offset = area->exploreFlag / 32;
-
-    uint32 val = (uint32)(1 << (area->exploreFlag % 32));
-    uint32 currFields = bot->GetUInt32Value(PLAYER_EXPLORED_ZONES_1 + offset);
-
-    return !(currFields & val);
+    // DarkChaos: through Player::HasExploredAreaBit, which knows the words past the update fields; reading
+    // PLAYER_EXPLORED_ZONES_1 + offset for an AreaBit of 4096 or more read whatever player field came next
+    return !bot->HasExploredAreaBit(area->exploreFlag);
 }
 
 // std::string const ExploreTravelDestination::getTitle()

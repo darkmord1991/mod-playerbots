@@ -263,7 +263,7 @@ uint8 FreeQuestLogSlotValue::Calculate()
         numQuest++;
     }
 
-    return MAX_QUEST_LOG_SIZE - numQuest;
+    return CLIENT_QUEST_LOG_SIZE - numQuest;
 }
 
 uint32 DialogStatusValue::getDialogStatus(Player* bot, int32 questgiver, uint32 questId)

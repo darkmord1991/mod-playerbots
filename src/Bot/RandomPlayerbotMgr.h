@@ -14,6 +14,7 @@
 #include "PlayerbotMgr.h"
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <mutex>
 #include <set>
 #include <unordered_set>
@@ -258,6 +259,14 @@ private:
     float activityMod = 0.25;
     bool _isBotInitializing = true;
     bool _isBotLogging = true;
+    // DarkChaos: re-randomizing a bot that already has its level and gear costs ~40 ms. After a restart every bot
+    // whose timer ran out during the downtime is due at once (491 in the first 3 minutes on 2026-11-08, with
+    // 400-550 ms Playerbots.UpdateBots ticks), so one update pass does at most this many. The rest wait for a
+    // later pass. A bot that still needs RandomizeFirst is never held back.
+    // Atomic: ProcessBot() also runs from RandomBotUpdateAction on the map threads, which share this budget.
+    static constexpr int32 MAX_REPEAT_RANDOMIZE_PER_PASS = 2;
+    std::atomic<int32> _repeatRandomizeBudget{MAX_REPEAT_RANDOMIZE_PER_PASS};
+    std::atomic<uint32> _repeatRandomizeDeferred{0};
     bool _botCountRolled = false;
     time_t _nextScheduledCountUpdate = 0;
     uint32 _rolledCountMode = 0;
