@@ -761,6 +761,8 @@ bool PlayerbotAIConfig::Initialize()
     AutoPickTalents = sConfigMgr->GetOption<bool>("Playerbots.AutoPickTalents", true);
     AutoPickTalentsForPlayerControlledBots = sConfigMgr->GetOption<bool>("Playerbots.AutoPickTalentsForPlayerControlledBots", false);
     AutoUpgradeEquip = sConfigMgr->GetOption<bool>("Playerbots.AutoUpgradeEquip", true);
+    DCStaleGearMinLevel = sConfigMgr->GetOption<uint32>("Playerbots.DCStaleGear.MinLevel", 81);
+    DCStaleGearLevelGap = sConfigMgr->GetOption<uint32>("Playerbots.DCStaleGear.LevelGap", 20);
     HunterWolfPet = sConfigMgr->GetOption<int32>("Playerbots.HunterWolfPet", 0);
     DefaultPetStance = sConfigMgr->GetOption<int32>("Playerbots.DefaultPetStance", 1);
     PetChatCommandDebug = sConfigMgr->GetOption<bool>("Playerbots.PetChatCommandDebug", 0);

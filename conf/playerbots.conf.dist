@@ -1177,6 +1177,15 @@ Playerbots.ResetBotLevel.ExcludeNames =
 # Default: 1 (enabled)
 Playerbots.AutoUpgradeEquip = 1
 
+# DarkChaos: randombots of at least MinLevel get the same incremental upgrade on every refresh (teleport,
+# revive) while an equipped item's required level is LevelGap or more below theirs. It catches bots whose
+# level moved past their gear without a level-up. Old items that still score best are kept (an item is only
+# replaced by one scoring 1.2x higher), heirlooms and relics do not count, and alt bots are never touched.
+# MinLevel 0 turns it off; 81 leaves levels 1-80 as they were.
+# Default: MinLevel 81, LevelGap 20
+Playerbots.DCStaleGear.MinLevel = 81
+Playerbots.DCStaleGear.LevelGap = 20
+
 # Enable/disable which (if any) randombots preserve their current equipment and spec during login
 # and periodic randomization (i.e., persistence).
 # Default: 1 (enabled)

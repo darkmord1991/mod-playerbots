@@ -1101,6 +1101,7 @@ void PlayerbotFactory::Refresh()
     // }
     InitAttunementQuests();
     ClearInventory();
+    RefreshStaleEquipment();  // DarkChaos: before InitAmmo, which follows the ranged weapon
     InitAmmo();
     InitFood();
     InitReagents();
@@ -1129,6 +1130,63 @@ void PlayerbotFactory::Refresh()
     if (bot->GetMoney() < money)
         bot->SetMoney(money);
     // bot->SaveToDB(false, false);
+}
+
+// DarkChaos: equipped items whose required level trails the bot by DCStaleGear.LevelGap or more. Heirlooms
+// scale with their wearer and the relic pools above 80 are too thin to replace anything, so neither counts.
+uint32 PlayerbotFactory::CountStaleEquipment() const
+{
+    uint32 const botLevel = bot->GetLevel();
+    uint32 const gap = sPlayerbotAIConfig.DCStaleGearLevelGap;
+    if (!gap || botLevel <= gap)
+        return 0;
+
+    uint32 stale = 0;
+    for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+    {
+        if (slot == EQUIPMENT_SLOT_BODY || slot == EQUIPMENT_SLOT_TABARD)
+            continue;
+
+        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!item)
+            continue;
+
+        ItemTemplate const* proto = item->GetTemplate();
+        if (!proto || proto->Quality == ITEM_QUALITY_HEIRLOOM || proto->InventoryType == INVTYPE_RELIC)
+            continue;
+
+        if (proto->RequiredLevel + gap <= botLevel)
+            ++stale;
+    }
+
+    return stale;
+}
+
+// DarkChaos: a random bot keeps whatever it wears until it levels up. With EquipAndSpecPersistence the periodic
+// Randomize(true) skips InitEquipment, and AutoUpgradeEquip runs only on SMSG_LEVELUP_INFO, which takes 25-40 h
+// per level above 110. Bots that reached their level without a full re-gear wore level-40 gear at 157 (11-13).
+// The incremental pass keeps every item the new one does not beat by 1.2x, so gear that is old but still the best
+// (the level-80 Emberwood blues around level 100) stays on.
+void PlayerbotFactory::RefreshStaleEquipment()
+{
+    uint32 const minLevel = sPlayerbotAIConfig.DCStaleGearMinLevel;
+    if (!minLevel || bot->GetLevel() < minLevel || !sRandomPlayerbotMgr.IsRandomBot(bot))
+        return;
+
+    uint32 const staleBefore = CountStaleEquipment();
+    if (!staleBefore)
+        return;
+
+    InitEquipment(true);
+
+    uint32 const staleAfter = CountStaleEquipment();
+    if (staleAfter < staleBefore)
+        LOG_INFO("playerbots", "Bot {} <{}> level {}: stale gear refresh replaced {} of {} item(s) {}+ levels below it",
+            bot->GetGUID().ToString().c_str(), bot->GetName(), bot->GetLevel(), staleBefore - staleAfter, staleBefore,
+            sPlayerbotAIConfig.DCStaleGearLevelGap);
+    else
+        LOG_DEBUG("playerbots", "Bot {} <{}> level {}: stale gear refresh found nothing better for {} item(s)",
+            bot->GetGUID().ToString().c_str(), bot->GetName(), bot->GetLevel(), staleBefore);
 }
 
 void PlayerbotFactory::InitConsumables()

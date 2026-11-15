@@ -393,6 +393,10 @@ public:
     bool AutoPickTalents;
     bool AutoPickTalentsForPlayerControlledBots;
     bool AutoUpgradeEquip;
+    // Random bots of at least DCStaleGearMinLevel (0 = off) get an incremental gear pass on refresh while an
+    // equipped item's required level trails theirs by DCStaleGearLevelGap. See PlayerbotFactory::RefreshStaleEquipment.
+    uint32 DCStaleGearMinLevel;
+    uint32 DCStaleGearLevelGap;
     int32 HunterWolfPet;
     int32 DefaultPetStance;
     int32 PetChatCommandDebug;
