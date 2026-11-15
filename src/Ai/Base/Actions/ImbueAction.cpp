@@ -22,15 +22,23 @@ bool ImbueWithPoisonAction::Execute(Event /*event*/)
     if (bot->getStandState() != UNIT_STAND_STATE_STAND)
         bot->SetStandState(UNIT_STAND_STATE_STAND);
 
-    static const std::vector<uint32_t> prioritizedInstantPoisons = {
+    static const std::vector<uint32_t> prioritizedInstantPoisons = [] {
+        std::vector<uint32_t> ids(std::begin(DC_INSTANT_POISONS), std::end(DC_INSTANT_POISONS));
+        ids.insert(ids.end(), {
         INSTANT_POISON_IX, INSTANT_POISON_VIII, INSTANT_POISON_VII, INSTANT_POISON_VI, INSTANT_POISON_V, INSTANT_POISON_IV,
         INSTANT_POISON_III, INSTANT_POISON_II, INSTANT_POISON
-    };
+        });
+        return ids;
+    }();
 
-    static const std::vector<uint32_t> prioritizedDeadlyPoisons = {
+    static const std::vector<uint32_t> prioritizedDeadlyPoisons = [] {
+        std::vector<uint32_t> ids(std::begin(DC_DEADLY_POISONS), std::end(DC_DEADLY_POISONS));
+        ids.insert(ids.end(), {
         DEADLY_POISON_IX, DEADLY_POISON_VIII, DEADLY_POISON_VII, DEADLY_POISON_VI, DEADLY_POISON_V, DEADLY_POISON_IV,
         DEADLY_POISON_III, DEADLY_POISON_II, DEADLY_POISON
-    };
+        });
+        return ids;
+    }();
 
     // Check if we have any deadly or instant poisons
     Item* deadlyPoison = nullptr;

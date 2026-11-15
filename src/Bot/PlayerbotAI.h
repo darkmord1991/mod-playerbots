@@ -191,6 +191,15 @@ enum RoguePoisonId
     DEADLY_POISON_IX    = 43233
 };
 
+// DarkChaos: poison ranks above level 80, one every 6 levels from 81 to 159 (tools/balance/gen_class_items.py),
+// highest first. Ranks 1-9 sit at 423101+ / 423111+, ranks 10-14 at 423151+ / 423161+.
+static constexpr uint32 DC_INSTANT_POISONS[] = {
+    423155, 423154, 423153, 423152, 423151, 423109, 423108, 423107, 423106, 423105, 423104, 423103, 423102, 423101
+};
+static constexpr uint32 DC_DEADLY_POISONS[] = {
+    423165, 423164, 423163, 423162, 423161, 423119, 423118, 423117, 423116, 423115, 423114, 423113, 423112, 423111
+};
+
 enum SharpeningStoneId
 {
     ROUGH_SHARPENING_STONE      = 2862,

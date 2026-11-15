@@ -1306,16 +1306,19 @@ void PlayerbotFactory::InitConsumables()
         }
         case CLASS_ROGUE:
         {
-            std::vector<uint32> instant_poisons = {
+            std::vector<uint32> instant_poisons(std::begin(DC_INSTANT_POISONS), std::end(DC_INSTANT_POISONS));
+            instant_poisons.insert(instant_poisons.end(), {
                 INSTANT_POISON_IX, INSTANT_POISON_VIII, INSTANT_POISON_VII, INSTANT_POISON_VI, INSTANT_POISON_V,
-                INSTANT_POISON_IV, INSTANT_POISON_III, INSTANT_POISON_II, INSTANT_POISON };
-            std::vector<uint32> deadly_poisons = {
+                INSTANT_POISON_IV, INSTANT_POISON_III, INSTANT_POISON_II, INSTANT_POISON });
+            std::vector<uint32> deadly_poisons(std::begin(DC_DEADLY_POISONS), std::end(DC_DEADLY_POISONS));
+            deadly_poisons.insert(deadly_poisons.end(), {
                 DEADLY_POISON_IX, DEADLY_POISON_VIII, DEADLY_POISON_VII, DEADLY_POISON_VI, DEADLY_POISON_V,
-                DEADLY_POISON_IV, DEADLY_POISON_III, DEADLY_POISON_II, DEADLY_POISON };
+                DEADLY_POISON_IV, DEADLY_POISON_III, DEADLY_POISON_II, DEADLY_POISON });
+            // The DarkChaos ranks exist only once their world SQL is applied: skip an id with no template.
             for (uint32 itemId : deadly_poisons)
             {
                 ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
-                if (proto->RequiredLevel > level)
+                if (!proto || proto->RequiredLevel > level)
                     continue;
                 items.push_back({itemId, 20});
                 break;
@@ -1323,7 +1326,7 @@ void PlayerbotFactory::InitConsumables()
             for (uint32 itemId : instant_poisons)
             {
                 ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
-                if (proto->RequiredLevel > level)
+                if (!proto || proto->RequiredLevel > level)
                     continue;
                 items.push_back({itemId, 20});
                 break;
@@ -4562,6 +4565,8 @@ void PlayerbotFactory::CleanupConsumables() // remove old consumables as part of
         DEADLY_POISON_IX, DEADLY_POISON_VIII, DEADLY_POISON_VII, DEADLY_POISON_VI, DEADLY_POISON_V,
         DEADLY_POISON_IV, DEADLY_POISON_III, DEADLY_POISON_II, DEADLY_POISON
     };
+    idsToDelete.insert(std::begin(DC_INSTANT_POISONS), std::end(DC_INSTANT_POISONS));
+    idsToDelete.insert(std::begin(DC_DEADLY_POISONS), std::end(DC_DEADLY_POISONS));
 
     for (Item* item : items)
     {
