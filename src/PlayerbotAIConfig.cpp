@@ -813,6 +813,7 @@ bool PlayerbotAIConfig::Initialize()
     DCSkipQuests.clear();
     LoadList<std::vector<uint32>>(sConfigMgr->GetOption<std::string>("Playerbots.DCLevelAreas.SkipQuests", ""),
                                   DCSkipQuests);
+    DCQuestStatsDumpMinutes = sConfigMgr->GetOption<uint32>("Playerbots.DCQuestStats.DumpMinutes", 0);
     DeathKnightStartLevel = sConfigMgr->GetOption<uint32>("Playerbots.DeathKnightStartLevel", 55);
 
     RpgStatusProbWeight[RPG_WANDER_RANDOM] = sConfigMgr->GetOption<int32>("Playerbots.RpgStatusProbWeight.WanderRandom", 15);

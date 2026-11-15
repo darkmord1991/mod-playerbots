@@ -10,6 +10,7 @@
 #include "Battleground.h"
 #include "BattlegroundMgr.h"
 #include "BotStartLocation.h"
+#include "DCQuestSpawnIndex.h"
 #include "Cell.h"
 #include "CellImpl.h"
 #include "ChannelMgr.h"
@@ -493,6 +494,20 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 /*elapsed*/, bool /*minimal*/)
         {
             sRandomPlayerbotMgr.PrintStats();
             // activatePrintStatsThread();
+        }
+    }
+
+    // DarkChaos: keep LogsDir/playerbots_quest_stats.json current without anyone typing `rndbot questdump`.
+    if (sPlayerbotAIConfig.DCQuestStatsDumpMinutes && sPlayerbotAIConfig.CollectDetailedQuestStats &&
+        sPlayerbotAIConfig.EnableNewRpgStrategy)
+    {
+        time_t const now = time(nullptr);
+        if (!questStatsDumpTimer)
+            questStatsDumpTimer = now;
+        else if (now > questStatsDumpTimer + static_cast<time_t>(sPlayerbotAIConfig.DCQuestStatsDumpMinutes) * MINUTE)
+        {
+            questStatsDumpTimer = now;
+            ExportQuestStatsToJson();
         }
     }
     uint32 updateBots = sPlayerbotAIConfig.RandomBotsPerInterval * onlineBotFocus / 100;
@@ -3616,6 +3631,16 @@ void RandomPlayerbotMgr::PrintQuestStats()
             reasons += std::string(QuestAbandonReasonName(static_cast<QuestAbandonReason>(i))) + " x" +
                        std::to_string(counters.abandoned[i]);
         }
+        for (size_t i = 0; i < counters.stuck.size(); ++i)
+        {
+            if (!counters.stuck[i])
+                continue;
+            problemCount += counters.stuck[i];
+            if (!reasons.empty())
+                reasons += ", ";
+            reasons += std::string(QuestStuckReasonName(static_cast<QuestStuckReason>(i))) + " x" +
+                       std::to_string(counters.stuck[i]);
+        }
 
         if (problemCount)
             problems.push_back({questId, problemCount, std::move(reasons)});
@@ -3686,6 +3711,8 @@ void RandomPlayerbotMgr::ExportQuestStatsToJson()
                 count += value;
             for (uint32 value : counters.abandoned)
                 count += value;
+            for (uint32 value : counters.stuck)
+                count += value;
             return count;
         }
     };
@@ -3701,13 +3728,24 @@ void RandomPlayerbotMgr::ExportQuestStatsToJson()
     constexpr size_t abandonReasonCount = static_cast<size_t>(QuestAbandonReason::Count);
     std::array<uint32, dropReasonCount> dropTotals{};
     std::array<uint32, abandonReasonCount> abandonTotals{};
+    std::array<uint32, static_cast<size_t>(QuestStuckReason::Count)> stuckTotals{};
     for (QuestRow const& row : rows)
     {
         for (size_t i = 0; i < dropReasonCount; ++i)
             dropTotals[i] += row.counters.dropped[i];
         for (size_t i = 0; i < abandonReasonCount; ++i)
             abandonTotals[i] += row.counters.abandoned[i];
+        for (size_t i = 0; i < stuckTotals.size(); ++i)
+            stuckTotals[i] += row.counters.stuck[i];
     }
+    auto stuckName = [](size_t i) { return QuestStuckReasonName(static_cast<QuestStuckReason>(i)); };
+    auto zonesToJson = [](std::vector<uint32> const& zones)
+    {
+        std::string json = "[";
+        for (size_t i = 0; i < zones.size(); ++i)
+            json += (i ? ", " : "") + std::to_string(zones[i]);
+        return json + "]";
+    };
 
     char stamp[32] = "";
     std::time_t const now = std::time(nullptr);
@@ -3727,6 +3765,18 @@ void RandomPlayerbotMgr::ExportQuestStatsToJson()
     out << "  },\n";
     out << "  \"dropReasons\": " << reasonsToJson(dropTotals, dropName) << ",\n";
     out << "  \"abandonReasons\": " << reasonsToJson(abandonTotals, abandonName) << ",\n";
+    // DarkChaos: quests a bot held but could not work on, and quests no bot takes because the map they are
+    // offered on lacks their turn-in or a target (DCQuestSpawnIndex).
+    out << "  \"stuckReasons\": " << reasonsToJson(stuckTotals, stuckName) << ",\n";
+    out << "  \"unplayable\": [";
+    std::vector<std::pair<uint32, uint32>> const unplayable = DCQuestSpawnIndex::GetUnplayable();
+    for (size_t i = 0; i < unplayable.size(); ++i)
+    {
+        Quest const* quest = sObjectMgr->GetQuestTemplate(unplayable[i].second);
+        out << (i ? "," : "") << "\n    {\"map\": " << unplayable[i].first << ", \"id\": " << unplayable[i].second
+            << ", \"name\": \"" << JsonEscape(quest ? quest->GetTitle() : "Unknown Quest") << "\"}";
+    }
+    out << (unplayable.empty() ? "],\n" : "\n  ],\n");
     out << "  \"quests\": [\n";
 
     for (size_t i = 0; i < rows.size(); ++i)
@@ -3735,14 +3785,21 @@ void RandomPlayerbotMgr::ExportQuestStatsToJson()
         Quest const* quest = sObjectMgr->GetQuestTemplate(row.questId);
         uint32 dropped = 0;
         uint32 abandoned = 0;
+        uint32 stuck = 0;
         for (uint32 value : row.counters.dropped)
             dropped += value;
         for (uint32 value : row.counters.abandoned)
             abandoned += value;
+        for (uint32 value : row.counters.stuck)
+            stuck += value;
 
         out << "    {\n";
         out << "      \"id\": " << row.questId << ",\n";
         out << "      \"name\": \"" << JsonEscape(quest ? quest->GetTitle() : "Unknown Quest") << "\",\n";
+        out << "      \"sort\": " << (quest ? quest->GetZoneOrSort() : 0) << ",\n";
+        out << "      \"zones\": " << zonesToJson(TravelMgr::instance().GetQuestZones(row.questId)) << ",\n";
+        out << "      \"stuck\": " << stuck << ",\n";
+        out << "      \"stuckReasons\": " << reasonsToJson(row.counters.stuck, stuckName) << ",\n";
         out << "      \"accepted\": " << row.counters.accepted << ",\n";
         out << "      \"completed\": " << row.counters.completed << ",\n";
         out << "      \"rewarded\": " << row.counters.rewarded << ",\n";

@@ -286,6 +286,7 @@ private:
     time_t RealPlayerLastTimeSeen = 0;
     time_t DelayLoginBotsTimer;
     time_t printStatsTimer;
+    time_t questStatsDumpTimer = 0;  // DarkChaos: see Playerbots.DCQuestStats.DumpMinutes
     uint32 AddRandomBots();
     uint32 RemoveRandomBots();
     uint32 GetScheduledBotCount();

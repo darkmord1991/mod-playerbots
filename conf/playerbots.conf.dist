@@ -1464,6 +1464,13 @@ Playerbots.RpgTargetSearchDistance = 150.0
 # Default: 0 (disabled)
 Playerbots.CollectDetailedQuestStats = 0
 
+# DarkChaos: also write LogsDir/playerbots_quest_stats.json every N minutes while
+# CollectDetailedQuestStats is on. The file then carries, per quest, its QuestSortID, the zones its
+# givers and turn-ins stand in, and "stuck" reasons (no_poi, no_turn_in_poi, giver_timeout: held
+# but not workable), plus the list of quests no bot takes because their map lacks a turn-in or target.
+# Default: 0 (only on ".playerbots rndbot questdump")
+Playerbots.DCQuestStats.DumpMinutes = 0
+
 # Control probability weights for RPG status of bots. Takes effect only when the status meets its premise.​
 # Sum of weights need not be 100. Set to 0 to disable the status.
 #

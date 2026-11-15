@@ -556,6 +556,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
         if (!GetQuestPOIPosAndObjectiveIdx(questId, poiInfo))
         {
             // can't find a poi pos to go, stop doing quest for now
+            botAI->RecordQuestStuck(questId, QuestStuckReason::NoPoi);
             botAI->rpgInfo.ChangeToIdle();
             return true;
         }
@@ -655,6 +656,7 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
         if (!GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
         {
             // can't find a poi pos to reward, stop doing quest for now
+            botAI->RecordQuestStuck(questId, QuestStuckReason::NoTurnInPoi);
             botAI->rpgInfo.ChangeToIdle();
             return false;
         }
@@ -728,6 +730,7 @@ bool NewRpgDoQuestAction::PickUpQuest(NewRpgInfo::DoQuest& data)
     if (GetMSTimeDiffToNow(data.lastReachPOI) >= pickUpStayTime)
     {
         botAI->lowPriorityQuest.insert(data.questId);
+        botAI->RecordQuestStuck(data.questId, QuestStuckReason::GiverTimeout);
         LOG_DEBUG("playerbots", "[New RPG] {} could not pick up quest {} at its quest giver", bot->GetName(),
                   data.questId);
         botAI->rpgInfo.ChangeToIdle();

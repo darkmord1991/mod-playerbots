@@ -427,6 +427,8 @@ public:
     std::map<uint32, uint32> DCQuestPoiMapAlias;
     // Quests given on those maps that bots never take (scripted, elite or item-use mechanics they cannot do).
     std::vector<uint32> DCSkipQuests;
+    // Minutes between automatic writes of playerbots_quest_stats.json; 0 = only on `rndbot questdump`.
+    uint32 DCQuestStatsDumpMinutes;
 
     // Level a bot death knight starts at when it is placed at Ebon Hold instead of the crater.
     // See BotStartLocations::GetDeathKnightStartLevel().

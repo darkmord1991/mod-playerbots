@@ -6939,6 +6939,16 @@ void PlayerbotAI::RecordQuestAbandoned(uint32 questId, QuestAbandonReason reason
         ++rpgStatistic.byQuest[questId].abandoned[static_cast<size_t>(reason)];
 }
 
+void PlayerbotAI::RecordQuestStuck(uint32 questId, QuestStuckReason reason)
+{
+    if (!questId || !sPlayerbotAIConfig.CollectDetailedQuestStats)
+        return;
+
+    uint64 const key = (static_cast<uint64>(questId) << 8) | static_cast<uint64>(reason);
+    if (reportedQuestStuck.insert(key).second)
+        ++rpgStatistic.byQuest[questId].stuck[static_cast<size_t>(reason)];
+}
+
 uint32 PlayerbotAI::GetReactDelay()
 {
     uint32 base = sPlayerbotAIConfig.ReactDelay;  // Default 100(ms)

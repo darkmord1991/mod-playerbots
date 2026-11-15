@@ -178,6 +178,31 @@ enum class QuestAbandonReason : uint8
     Count
 };
 
+// DarkChaos: the bot holds the quest but cannot work on it. Counted once per bot and quest, and kept apart from
+// the abandon counts so the totals keep meaning what upstream reports.
+enum class QuestStuckReason : uint8
+{
+    NoPoi,         // no POI or spawn to go to for an unfinished objective
+    NoTurnInPoi,   // finished, but no POI or spawn of the turn-in on this map
+    GiverTimeout,  // stood at the giver and was never offered the quest
+    Count
+};
+
+inline char const* QuestStuckReasonName(QuestStuckReason reason)
+{
+    switch (reason)
+    {
+        case QuestStuckReason::NoPoi:
+            return "no_poi";
+        case QuestStuckReason::NoTurnInPoi:
+            return "no_turn_in_poi";
+        case QuestStuckReason::GiverTimeout:
+            return "giver_timeout";
+        default:
+            return "unknown";
+    }
+}
+
 inline char const* QuestDropReasonName(QuestDropReason reason)
 {
     switch (reason)
@@ -221,6 +246,7 @@ struct QuestCounters
     uint32 rewarded{0};
     std::array<uint32, static_cast<size_t>(QuestDropReason::Count)> dropped{};
     std::array<uint32, static_cast<size_t>(QuestAbandonReason::Count)> abandoned{};
+    std::array<uint32, static_cast<size_t>(QuestStuckReason::Count)> stuck{};
 };
 
 struct NewRpgStatistic
@@ -251,6 +277,8 @@ struct NewRpgStatistic
                 target.dropped[i] += counters.dropped[i];
             for (size_t i = 0; i < target.abandoned.size(); ++i)
                 target.abandoned[i] += counters.abandoned[i];
+            for (size_t i = 0; i < target.stuck.size(); ++i)
+                target.stuck[i] += counters.stuck[i];
         }
         return *this;
     }

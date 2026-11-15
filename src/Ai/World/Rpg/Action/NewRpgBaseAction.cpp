@@ -1040,9 +1040,11 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
 
                 std::vector<POIInfo> poiInfo;
                 if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
-                {
                     availableQuests.push_back(questId);
-                }
+                else
+                    botAI->RecordQuestStuck(questId, bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE
+                                                         ? QuestStuckReason::NoTurnInPoi
+                                                         : QuestStuckReason::NoPoi);
             }
             if (availableQuests.size())
             {

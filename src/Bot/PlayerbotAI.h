@@ -650,6 +650,9 @@ public:
     void RecordQuestRewarded(uint32 questId);
     void RecordQuestDropped(uint32 questId, QuestDropReason reason);
     void RecordQuestAbandoned(uint32 questId, QuestAbandonReason reason);
+    // DarkChaos: once per bot, quest and reason; only while CollectDetailedQuestStats is on.
+    void RecordQuestStuck(uint32 questId, QuestStuckReason reason);
+    std::unordered_set<uint64> reportedQuestStuck;
     std::unordered_set<uint32> lowPriorityQuest;
     time_t bgReleaseAttemptTime = 0;
     ForceRebuffState forceRebuff;
