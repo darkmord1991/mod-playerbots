@@ -14,6 +14,7 @@
 #include "Corpse.h"
 #include "Creature.h"
 #include "DCQuestSpawnIndex.h"
+#include "DatabaseEnv.h"
 #include "GameEventMgr.h"
 #include "Log.h"
 #include "Map.h"
@@ -23,6 +24,7 @@
 #include "PathGenerator.h"
 #include "Playerbots.h"
 #include "RaceMgr.h"
+#include "StringFormat.h"
 #include "Talentspec.h"
 #include "TransportMgr.h"
 #include "TravelNode.h"
@@ -4721,14 +4723,128 @@ void TravelMgr::PrepareZone2LevelBracket()
 
     // DarkChaos custom leveling zones
     zone2LevelBracket[268]                      = {1, 80};  // Azshara Crater (map 37)
+    // Mount Hyjal continent (map 750), 80-130
+    zone2LevelBracket[4929]                     = {80, 90};    // Darkshore (Alliance start)
+    zone2LevelBracket[4930]                     = {80, 90};    // Azshara (Horde start)
+    zone2LevelBracket[4931]                     = {88, 98};    // Ashenvale
+    zone2LevelBracket[4927]                     = {96, 106};   // Felwood
+    zone2LevelBracket[4926]                     = {104, 115};  // Winterspring
+    zone2LevelBracket[4923]                     = {113, 130};  // Hyjal
+    // The Molten Front (map 861, reached by portal from Hyjal's Sulfuron Spire), the 124-130 tail of map 750
+    zone2LevelBracket[4925]                     = {124, 130};  // The Molten Front
+    // Lordaeron continent (map 751), 130-160
+    zone2LevelBracket[4933]                     = {130, 136};  // Tirisfal Glades
+    zone2LevelBracket[4939]                     = {130, 136};  // Ruins of Gilneas
+    zone2LevelBracket[4935]                     = {134, 140};  // Silverpine Forest
+    zone2LevelBracket[4936]                     = {138, 144};  // Hillsbrad Foothills
+    zone2LevelBracket[4938]                     = {142, 147};  // Arathi Highlands
+    zone2LevelBracket[4937]                     = {145, 150};  // The Hinterlands
+    zone2LevelBracket[4932]                     = {148, 153};  // Western Plaguelands
+    zone2LevelBracket[4924]                     = {152, 160};  // Eastern Plaguelands
+    // Tirisfal, Silverpine and Gilneas are Horde questing; the Alliance route of that stretch starts at the 7th
+    // Legion Base Camp in Silverpine (130-137, 2026-11-12) and continues at the Stormpike camp in Hillsbrad.
+    allianceZoneBracket.clear();
+    hordeZoneBracket.clear();
+    allianceZoneBracket[4935]                   = {130, 137};
+    allianceZoneBracket[4936]                   = {137, 144};
 
     // Override with values from config
     for (auto const& [zoneId, bracketPair] : sPlayerbotAIConfig.ZoneBrackets)
         zone2LevelBracket[zoneId] = {bracketPair.first, bracketPair.second};
+    for (auto const& [zoneId, bracketPair] : sPlayerbotAIConfig.AllianceZoneBrackets)
+        allianceZoneBracket[zoneId] = {bracketPair.first, bracketPair.second};
+    for (auto const& [zoneId, bracketPair] : sPlayerbotAIConfig.HordeZoneBrackets)
+        hordeZoneBracket[zoneId] = {bracketPair.first, bracketPair.second};
 
     maxBracketLevel = 0;
-    for (auto const& [zoneId, bracket] : zone2LevelBracket)
-        maxBracketLevel = std::max(maxBracketLevel, bracket.high);
+    for (auto const* brackets : {&zone2LevelBracket, &allianceZoneBracket, &hordeZoneBracket})
+        for (auto const& [zoneId, bracket] : *brackets)
+            maxBracketLevel = std::max(maxBracketLevel, bracket.high);
+}
+
+TravelMgr::LevelBracket const* TravelMgr::GetZoneBracket(uint32 zoneId, TeamId team) const
+{
+    auto const& factionBrackets = team == TEAM_ALLIANCE ? allianceZoneBracket : hordeZoneBracket;
+    auto itr = factionBrackets.find(zoneId);
+    if (itr != factionBrackets.end())
+        return &itr->second;
+
+    itr = zone2LevelBracket.find(zoneId);
+    return itr != zone2LevelBracket.end() ? &itr->second : nullptr;
+}
+
+void TravelMgr::AddQuestZone(uint32 questId, uint32 zoneId)
+{
+    std::vector<uint32>& zones = questZones[questId];
+    if (std::find(zones.begin(), zones.end(), zoneId) == zones.end())
+        zones.push_back(zoneId);
+}
+
+namespace
+{
+// DarkChaos: the terrain of the DC leveling continents still carries stock area ids on some cloned tiles.
+// Wildhammer Keep on map 751 reads as The Hinterlands (47) and two camps on map 750 as Ashenvale (331), so
+// their inns took the stock 42-51 and 20-30 brackets and drew low-level bots onto the maps. The spawn tables
+// carry the DC zone, so on those maps (Playerbots.DCLevelAreas.QuestSpawnMaps) that one wins. Read once from
+// TravelMgr::Init at startup, on the world thread.
+std::unordered_map<ObjectGuid::LowType, uint32> LoadDCSpawnZones(char const* table)
+{
+    std::unordered_map<ObjectGuid::LowType, uint32> zones;
+    if (sPlayerbotAIConfig.DCQuestSpawnMaps.empty())
+        return zones;
+
+    std::string mapList;
+    for (uint32 mapId : sPlayerbotAIConfig.DCQuestSpawnMaps)
+        mapList += (mapList.empty() ? "" : ",") + std::to_string(mapId);
+
+    std::string const sql = Acore::StringFormat("SELECT guid, zoneId FROM {} WHERE map IN ({}) AND zoneId <> 0", table,
+                                                mapList);  // sql-ok: table literal, map ids from config
+    if (QueryResult result = WorldDatabase.Query(sql))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            zones[fields[0].Get<uint32>()] = fields[1].Get<uint16>();
+        } while (result->NextRow());
+    }
+
+    return zones;
+}
+}  // namespace
+
+uint32 TravelMgr::AddHub(WorldPosition const& loc, uint32 zoneId, bool forHorde, bool forAlliance)
+{
+    uint32 levels = 0;
+    for (TeamId team : {TEAM_HORDE, TEAM_ALLIANCE})
+    {
+        if (!(team == TEAM_HORDE ? forHorde : forAlliance))
+            continue;
+
+        LevelBracket const* bracket = GetZoneBracket(zoneId, team);
+        if (!bracket)
+            continue;
+
+        auto& cache = team == TEAM_HORDE ? hordeHubsPerLevelCache : allianceHubsPerLevelCache;
+        for (uint32 level = bracket->low; level <= bracket->high; ++level)
+            cache[level].push_back(loc);
+
+        levels = std::max(levels, bracket->high - bracket->low + 1);
+    }
+
+    return levels;
+}
+
+bool TravelMgr::IsQuestHandledInZone(uint32 questId, uint32 zoneId) const
+{
+    auto itr = questZones.find(questId);
+    return itr != questZones.end() && std::find(itr->second.begin(), itr->second.end(), zoneId) != itr->second.end();
+}
+
+std::vector<uint32> const& TravelMgr::GetQuestZones(uint32 questId) const
+{
+    static std::vector<uint32> const none;
+    auto itr = questZones.find(questId);
+    return itr != questZones.end() ? itr->second : none;
 }
 
 void TravelMgr::PrepareDestinationCache()
@@ -4760,6 +4876,20 @@ void TravelMgr::PrepareDestinationCache()
         sMapMgr->CreateBaseMap(configuredMapId);
     }
 
+    std::unordered_map<ObjectGuid::LowType, uint32> const dcCreatureZones = LoadDCSpawnZones("creature");
+    std::unordered_map<ObjectGuid::LowType, uint32> const dcGameObjectZones = LoadDCSpawnZones("gameobject");
+    std::map<std::tuple<uint32, uint32, uint32>, uint32> dcZoneOverrides;  // (map, terrain zone, table zone) -> count
+    auto const spawnZoneOf = [&dcZoneOverrides](std::unordered_map<ObjectGuid::LowType, uint32> const& tableZones,
+                                                ObjectGuid::LowType spawnId, uint32 mapId, uint32 terrainZone)
+    {
+        auto const itr = tableZones.find(spawnId);
+        if (itr == tableZones.end() || itr->second == terrainZone)
+            return terrainZone;
+
+        ++dcZoneOverrides[std::make_tuple(mapId, terrainZone, itr->second)];
+        return itr->second;
+    };
+
     // Temporary map to group creatures by entry and area
     std::map<std::tuple<uint16, int32, int32, int32>, std::vector<CreatureData>> tempLocsCache;
     std::map<uint32, std::map<uint32, std::vector<WorldLocation>>> tempCreatureCache;
@@ -4789,6 +4919,26 @@ void TravelMgr::PrepareDestinationCache()
             continue;
 
         uint32 areaId = area->zone ? area->zone : area->ID;
+        // The zone hubs are filed under; it differs from areaId only on the DC leveling continents.
+        uint32 const spawnZone = spawnZoneOf(dcCreatureZones, guid, mapId, areaId);
+
+        for (uint32 entry : {creatureData.id, creatureData.id2, creatureData.id3})
+        {
+            if (!entry)
+                continue;
+
+            // Both zones: the bot's own zone at run time comes from the terrain.
+            for (auto [itr, end] = sObjectMgr->GetCreatureQuestRelationBounds(entry); itr != end; ++itr)
+            {
+                AddQuestZone(itr->second, areaId);
+                AddQuestZone(itr->second, spawnZone);
+            }
+            for (auto [itr, end] = sObjectMgr->GetCreatureQuestInvolvedRelationBounds(entry); itr != end; ++itr)
+            {
+                AddQuestZone(itr->second, areaId);
+                AddQuestZone(itr->second, spawnZone);
+            }
+        }
 
         // CREATURES
         if (creatureTemplate->npcflag == 0 &&
@@ -4818,6 +4968,9 @@ void TravelMgr::PrepareDestinationCache()
                 creatureTemplate->Entry != 3838 && creatureTemplate->Entry != 29480)
         {
             FactionTemplateEntry const* factionEntry = sFactionTemplateStore.LookupEntry(creatureTemplate->faction);
+            if (!factionEntry)
+                continue;
+
             bool forHorde = !(factionEntry->hostileMask & 4);
             bool forAlliance = !(factionEntry->hostileMask & 2);
 
@@ -4859,37 +5012,19 @@ void TravelMgr::PrepareDestinationCache()
                     361,  // Felwood (47-57)
                     490,  // Un'Goro Crater (49-56)
                     AREA_CRYSTALSONG_FOREST,
-                    AREA_WINTERGRASP
+                    AREA_WINTERGRASP,
+                    4939  // DarkChaos Ruins of Gilneas (map 751): only a Horde bat handler
                 };
-                if (zonesWithoutInnkeeper.count(areaId))
+                if (zonesWithoutInnkeeper.count(spawnZone))
                 {
-                    LevelBracket bracket = zone2LevelBracket[areaId];
                     WorldPosition loc(mapId, x + cos(orient) * 5.0f, y + sin(orient) * 5.0f, z + 0.5f, orient + M_PI);
-                    for (uint32 i = bracket.low; i <= bracket.high; i++)
-                    {
-                        if (forHorde)
-                            hordeHubsPerLevelCache[i].push_back(loc);
-                        if (forAlliance)
-                            allianceHubsPerLevelCache[i].push_back(loc);
-                    }
+                    AddHub(loc, spawnZone, forHorde, forAlliance);
                 }
             }
             else if (creatureTemplate->npcflag & UNIT_NPC_FLAG_INNKEEPER)
             {
-                if (zone2LevelBracket.find(areaId) == zone2LevelBracket.end())
-                    continue;
-
-                LevelBracket bracket = zone2LevelBracket[areaId];
                 WorldPosition loc(mapId, x + cos(orient) * 5.0f, y + sin(orient) * 5.0f, z + 0.5f, orient + M_PI);
-                for (uint32 i = bracket.low; i <= bracket.high; i++)
-                {
-                    if (forHorde)
-                        hordeHubsPerLevelCache[i].push_back(loc);
-
-                    if (forAlliance)
-                        allianceHubsPerLevelCache[i].push_back(loc);
-                    innkeepersCount++;
-                }
+                innkeepersCount += AddHub(loc, spawnZone, forHorde, forAlliance);
             }
         }
         // === BANKERS ===
@@ -4926,6 +5061,47 @@ void TravelMgr::PrepareDestinationCache()
             bankerCount++;
         }
     }
+
+    // Quest boards, chests and other object quest givers count for the quest's zones too (see IsQuestHandledInZone).
+    for (auto const& [spawnId, goData] : sObjectMgr->GetAllGOData())
+    {
+        if (std::find(sPlayerbotAIConfig.RandomBotMaps.begin(), sPlayerbotAIConfig.RandomBotMaps.end(), goData.mapid) ==
+            sPlayerbotAIConfig.RandomBotMaps.end())
+            continue;
+
+        auto const starters = sObjectMgr->GetGOQuestRelationBounds(goData.id);
+        auto const enders = sObjectMgr->GetGOQuestInvolvedRelationBounds(goData.id);
+        if (starters.first == starters.second && enders.first == enders.second)
+            continue;
+
+        Map* map = sMapMgr->FindMap(goData.mapid, 0);
+        if (!map)
+            continue;
+
+        AreaTableEntry const* area =
+            sAreaTableStore.LookupEntry(map->GetAreaId(PHASEMASK_NORMAL, goData.posX, goData.posY, goData.posZ));
+        if (!area)
+            continue;
+
+        uint32 const zoneId = area->zone ? area->zone : area->ID;
+        uint32 const spawnZone = spawnZoneOf(dcGameObjectZones, spawnId, goData.mapid, zoneId);
+        for (auto itr = starters.first; itr != starters.second; ++itr)
+        {
+            AddQuestZone(itr->second, zoneId);
+            AddQuestZone(itr->second, spawnZone);
+        }
+        for (auto itr = enders.first; itr != enders.second; ++itr)
+        {
+            AddQuestZone(itr->second, zoneId);
+            AddQuestZone(itr->second, spawnZone);
+        }
+    }
+
+    for (auto const& [key, count] : dcZoneOverrides)
+        LOG_INFO("playerbots",
+                 "DC zones: map {}: {} spawns are in zone {} by the terrain but zone {} by the spawn table; "
+                 "hubs use the table zone, quests count for both.",
+                 std::get<0>(key), count, std::get<1>(key), std::get<2>(key));
 
     // Process temporary caches
     for (auto const& [gridTuple, creatureDataList] : tempLocsCache)

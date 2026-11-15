@@ -557,7 +557,9 @@ bool NewRpgBaseAction::OrganizeQuestLog()
         const int64_t botZoneId = this->bot->GetZoneId();
 
         int32 const zoneOrSort = quest->GetZoneOrSort();
-        if (zoneOrSort < 0 || (zoneOrSort > 0 && zoneOrSort != botZoneId))
+        bool const otherZone = zoneOrSort > 0 && zoneOrSort != botZoneId &&
+                               !TravelMgr::instance().IsQuestHandledInZone(questId, static_cast<uint32>(botZoneId));
+        if (zoneOrSort < 0 || otherZone)
         {
             QuestDropReason const reason = zoneOrSort < 0 ? QuestDropReason::ClassOrHoliday
                                                           : QuestDropReason::OtherZone;

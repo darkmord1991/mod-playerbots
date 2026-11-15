@@ -1625,6 +1625,49 @@ Playerbots.ZoneBracket.4197 = 79,80
 # Azshara Crater         (Zone ID:  268    Default Min,Max:  1,80)
 Playerbots.ZoneBracket.268 = 1,80
 
+# DarkChaos - Mount Hyjal continent (map 750, 80-130):
+# Darkshore              (Zone ID: 4929    Default Min,Max:  80,90)   Alliance start
+# Azshara                (Zone ID: 4930    Default Min,Max:  80,90)   Horde start
+# Ashenvale              (Zone ID: 4931    Default Min,Max:  88,98)
+# Felwood                (Zone ID: 4927    Default Min,Max:  96,106)
+# Winterspring           (Zone ID: 4926    Default Min,Max: 104,115)
+# Hyjal                  (Zone ID: 4923    Default Min,Max: 113,130)
+# The Molten Front       (Zone ID: 4925    Default Min,Max: 124,130)   map 861, portal from Sulfuron Spire
+Playerbots.ZoneBracket.4929 = 80,90
+Playerbots.ZoneBracket.4930 = 80,90
+Playerbots.ZoneBracket.4931 = 88,98
+Playerbots.ZoneBracket.4927 = 96,106
+Playerbots.ZoneBracket.4926 = 104,115
+Playerbots.ZoneBracket.4923 = 113,130
+Playerbots.ZoneBracket.4925 = 124,130
+
+# DarkChaos - Lordaeron continent (map 751, 130-160):
+# Tirisfal Glades        (Zone ID: 4933    Default Min,Max: 130,136)
+# Ruins of Gilneas       (Zone ID: 4939    Default Min,Max: 130,136)
+# Silverpine Forest      (Zone ID: 4935    Default Min,Max: 134,140)
+# Hillsbrad Foothills    (Zone ID: 4936    Default Min,Max: 138,144)
+# Arathi Highlands       (Zone ID: 4938    Default Min,Max: 142,147)
+# The Hinterlands        (Zone ID: 4937    Default Min,Max: 145,150)
+# Western Plaguelands    (Zone ID: 4932    Default Min,Max: 148,153)
+# Eastern Plaguelands    (Zone ID: 4924    Default Min,Max: 152,160)
+Playerbots.ZoneBracket.4933 = 130,136
+Playerbots.ZoneBracket.4939 = 130,136
+Playerbots.ZoneBracket.4935 = 134,140
+Playerbots.ZoneBracket.4936 = 138,144
+Playerbots.ZoneBracket.4938 = 142,147
+Playerbots.ZoneBracket.4937 = 145,150
+Playerbots.ZoneBracket.4932 = 148,153
+Playerbots.ZoneBracket.4924 = 152,160
+
+# DarkChaos: a bracket for one faction only, which wins over the zone's bracket for that faction:
+#     Playerbots.ZoneBracket.Alliance.<zone> = min,max
+#     Playerbots.ZoneBracket.Horde.<zone> = min,max
+# Tirisfal, Silverpine and Gilneas on map 751 are Horde questing. Alliance bots start at the 7th Legion
+# Base Camp in Silverpine (130-137) and continue at the Stormpike camp in Hillsbrad (137-144).
+# Default: Alliance 4935 = 130,137 and 4936 = 137,144
+Playerbots.ZoneBracket.Alliance.4935 = 130,137
+Playerbots.ZoneBracket.Alliance.4936 = 137,144
+
 #
 #
 ####################################################################################################
@@ -1635,8 +1678,9 @@ Playerbots.ZoneBracket.268 = 1,80
 
 # Map IDs where bots can be teleported to
 # Defaults: 0 = Eastern Kingdoms, 1 = Kalimdor, 530 = Outland, 571 = Northrend
-# DarkChaos: 37 = Azshara Crater (needs a matching Playerbots.ZoneBracket entry for its zone)
-Playerbots.RandomBotMaps = 0,1,530,571,37
+# DarkChaos: 37 = Azshara Crater, 750 = Mount Hyjal, 751 = Lordaeron, 861 = The Molten Front (each needs
+# Playerbots.ZoneBracket entries for its zones)
+Playerbots.RandomBotMaps = 0,1,530,571,37,750,751,861
 
 # Azshara Crater (map 37) is a small custom leveling zone, so the bot population on it is capped.
 #

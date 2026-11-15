@@ -279,6 +279,9 @@ public:
 
     uint32 RandomBotTeleLowerLevel, RandomBotTeleHigherLevel;
     std::map<uint32, std::pair<uint32, uint32>> ZoneBrackets;
+    // DarkChaos: a zone's bracket for one faction only (Playerbots.ZoneBracket.Alliance.<zone> / .Horde.<zone>).
+    std::map<uint32, std::pair<uint32, uint32>> AllianceZoneBrackets;
+    std::map<uint32, std::pair<uint32, uint32>> HordeZoneBrackets;
     bool LogInGroupOnly, LogValuesPerTick;
     bool SummonAtInnkeepersEnabled;
     std::string CombatStrategies, NonCombatStrategies;

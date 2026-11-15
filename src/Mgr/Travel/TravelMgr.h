@@ -887,6 +887,10 @@ public:
     // Backed by a startup-built per-(level, team) index; empty when there is no valid giver.
     std::vector<WorldLocation> GetValidQuestGiverLocations(Player* bot);
     std::vector<uint32> GetFlightNodesInZone(uint32 zoneId, TeamId team, uint32 excludeNode = 0) const;
+    // True when a giver or turn-in of the quest is spawned in the zone. DarkChaos copies of stock zones keep the
+    // stock QuestSortID, so the quest's own zone never matches the zone the bot is standing in there.
+    bool IsQuestHandledInZone(uint32 questId, uint32 zoneId) const;
+    std::vector<uint32> const& GetQuestZones(uint32 questId) const;
     bool SelectAuctioneerByMap(Player* bot, NpcLocation& outAuctioneer);
     std::vector<WorldLocation> const& GetLocsPerLevelCache(uint8 level) const
     {
@@ -996,6 +1000,12 @@ private:
         bool InsideBracket(uint32 val) const { return val >= low && val <= high; }
     };
 
+    // The faction's own bracket for the zone when it has one, else the zone's. nullptr for a zone without one.
+    LevelBracket const* GetZoneBracket(uint32 zoneId, TeamId team) const;
+    // Adds a hub for each faction it serves, for every level of that faction's bracket. Returns the levels added.
+    uint32 AddHub(WorldPosition const& loc, uint32 zoneId, bool forHorde, bool forAlliance);
+    void AddQuestZone(uint32 questId, uint32 zoneId);
+
     struct BankerLocation
     {
         WorldLocation loc;
@@ -1039,7 +1049,11 @@ private:
     std::map<uint8, std::vector<WorldLocation>> locsPerLevelCache;
     std::unordered_map<uint32, std::vector<WorldLocation>> creatureSpawnsByTemplate;
     std::map<uint32, LevelBracket> zone2LevelBracket;
-    uint32 maxBracketLevel = 0;  // highest LevelBracket::high in zone2LevelBracket
+    std::map<uint32, LevelBracket> allianceZoneBracket;  // DarkChaos: faction-only brackets, win over zone2LevelBracket
+    std::map<uint32, LevelBracket> hordeZoneBracket;
+    uint32 maxBracketLevel = 0;  // highest LevelBracket::high in any of the bracket maps
+    // quest id -> zones a giver or turn-in of it is spawned in (bot maps only); built at startup, read-only after
+    std::unordered_map<uint32, std::vector<uint32>> questZones;
     // Quest-giver teleport index, built once at startup by PrepareQuestGiverTeleportIndex.
     // Keyed by (level -> team -> candidates) so the hot path is an O(1) bucket lookup.
     std::map<uint32, std::map<TeamId, std::vector<QuestGiverTeleportCandidate>>> questGiverTeleportIndex;
