@@ -109,6 +109,9 @@ std::vector<uint32> PlayerbotFactory::ccBreakTrinketCache;
 
 namespace
 {
+// Highest level a PremadeSpecLink talent template is configured for.
+constexpr int MAX_TALENT_TEMPLATE_LEVEL = 80;
+
 constexpr uint32 SPELL_DRUID_THICK_HIDE = 16931;
 constexpr uint32 SPELL_OWLKIN_FRENZY = 48393;
 constexpr uint32 SPELL_PRIMAL_TENACITY = 33957;
@@ -1817,7 +1820,7 @@ void PlayerbotFactory::InitTalentsBySpecNo(Player* bot, int specNo, bool reset)
         bot->resetTalents(true);
     }
     uint32 cls = bot->getClass();
-    int startLevel = bot->GetLevel();
+    int startLevel = std::min<int>(bot->GetLevel(), MAX_TALENT_TEMPLATE_LEVEL);
     uint32 classMask = bot->getClassMask();
     std::unordered_map<uint32, std::vector<TalentEntry const*>> spells_row;
     for (uint32 i = 0; i < sTalentStore.GetNumRows(); ++i)
@@ -3783,7 +3786,9 @@ void PlayerbotFactory::InitTalentsByTemplate(uint32 specTab)
     //     return;
     // }
     uint32 cls = bot->getClass();
-    int startLevel = bot->GetLevel();
+    // Templates stop at level 80. Above it the loops below never ran, so the bot got no template
+    // talents and every point went into its two other trees.
+    int startLevel = std::min<int>(bot->GetLevel(), MAX_TALENT_TEMPLATE_LEVEL);
     uint32 specIndex = sPlayerbotAIConfig.RandomClassSpecIndex[cls][specTab];
     uint32 classMask = bot->getClassMask();
     std::unordered_map<uint32, std::vector<TalentEntry const*>> spells_row;
