@@ -167,7 +167,8 @@ bool CastCreateSoulstoneAction::isUseful()
         16895,  // Greater Soulstone
         16896,  // Major Soulstone
         22116,  // Master Soulstone
-        36895   // Demonic Soulstone
+        36895,  // Demonic Soulstone
+        423008  // Dread Soulstone (DarkChaos, level 81)
     };
 
     // Check if the bot already has any soulstone
