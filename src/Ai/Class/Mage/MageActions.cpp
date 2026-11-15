@@ -28,6 +28,12 @@ std::vector<NextAction> CastMageArmorAction::getAlternatives()
     return CastBuffSpellAction::getAlternatives();
 }
 
+bool UseManaDiamondAction::isUseful()
+{
+    Player* bot = botAI->GetBot();
+    return AI_VALUE2(bool, "combat", "self target") && bot->GetItemCount(423010, false) > 0;  // Mana Diamond
+}
+
 bool UseManaSapphireAction::isUseful()
 {
     Player* bot = botAI->GetBot();

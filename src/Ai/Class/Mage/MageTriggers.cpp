@@ -37,6 +37,7 @@ bool NoFirestarterStrategyTrigger::IsActive()
 bool NoManaGemTrigger::IsActive()
 {
     static const std::vector<uint32> gemIds = {
+        423010, // Mana Diamond (DarkChaos, level 81)
         33312,  // Mana Sapphire
         22044,  // Mana Emerald
         8008,   // Mana Ruby

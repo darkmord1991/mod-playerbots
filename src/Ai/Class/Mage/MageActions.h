@@ -176,6 +176,14 @@ public:
     CastConjureWaterAction(PlayerbotAI* botAI) : CastBuffSpellAction(botAI, "conjure water") {}
 };
 
+// DarkChaos: Conjure Mana Gem rank 7 (level 81) makes a Mana Diamond (tools/balance/gen_class_items.py)
+class UseManaDiamondAction : public UseItemAction
+{
+public:
+    UseManaDiamondAction(PlayerbotAI* botAI) : UseItemAction(botAI, "mana diamond") {}
+    bool isUseful() override;
+};
+
 class UseManaSapphireAction : public UseItemAction
 {
 public:

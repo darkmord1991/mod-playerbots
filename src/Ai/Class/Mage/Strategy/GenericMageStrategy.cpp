@@ -11,6 +11,7 @@
 
 namespace
 {
+constexpr uint32 SPELL_CONJURE_MANA_DIAMOND = 920018;  // DarkChaos: rank 7, level 81
 constexpr uint32 SPELL_CONJURE_MANA_SAPPHIRE = 42985;
 constexpr uint32 SPELL_CONJURE_MANA_EMERALD = 27101;
 constexpr uint32 SPELL_CONJURE_MANA_RUBY = 10054;
@@ -106,7 +107,9 @@ void GenericMageStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 
     // Mana Threshold Triggers
     Player* bot = botAI->GetBot();
-    if (bot->HasSpell(SPELL_CONJURE_MANA_SAPPHIRE))
+    if (bot->HasSpell(SPELL_CONJURE_MANA_DIAMOND))
+        triggers.push_back(new TriggerNode("high mana", { NextAction("use mana diamond", 90.0f) }));
+    else if (bot->HasSpell(SPELL_CONJURE_MANA_SAPPHIRE))
         triggers.push_back(new TriggerNode("high mana", { NextAction("use mana sapphire", 90.0f) }));
     else if (bot->HasSpell(SPELL_CONJURE_MANA_EMERALD))
         triggers.push_back(new TriggerNode("high mana", { NextAction("use mana emerald", 90.0f) }));

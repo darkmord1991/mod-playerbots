@@ -232,6 +232,7 @@ public:
         creators["mirror image"] = &MageAiObjectContextInternal::mirror_image;
         creators["focus magic on party"] = &MageAiObjectContextInternal::focus_magic_on_party;
         creators["blink back"] = &MageAiObjectContextInternal::blink_back;
+        creators["use mana diamond"] = &MageAiObjectContextInternal::use_mana_diamond;
         creators["use mana sapphire"] = &MageAiObjectContextInternal::use_mana_sapphire;
         creators["use mana emerald"] = &MageAiObjectContextInternal::use_mana_emerald;
         creators["use mana ruby"] = &MageAiObjectContextInternal::use_mana_ruby;
@@ -293,6 +294,7 @@ private:
     static Action* mirror_image(PlayerbotAI* botAI) { return new CastMirrorImageAction(botAI); }
     static Action* focus_magic_on_party(PlayerbotAI* botAI) { return new CastFocusMagicOnPartyAction(botAI); }
     static Action* blink_back(PlayerbotAI* botAI) { return new CastBlinkBackAction(botAI); }
+    static Action* use_mana_diamond(PlayerbotAI* botAI) { return new UseManaDiamondAction(botAI); }
     static Action* use_mana_sapphire(PlayerbotAI* botAI) { return new UseManaSapphireAction(botAI); }
     static Action* use_mana_emerald(PlayerbotAI* botAI) { return new UseManaEmeraldAction(botAI); }
     static Action* use_mana_ruby(PlayerbotAI* botAI) { return new UseManaRubyAction(botAI); }
