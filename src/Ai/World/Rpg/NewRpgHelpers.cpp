@@ -8,6 +8,7 @@
 #include "QuestLevelRules.h"
 #include "Creature.h"
 #include "DCCraterQuestline.h"
+#include "DCQuestSpawnIndex.h"
 #include "GameObject.h"
 #include "GossipDef.h"
 #include "ObjectAccessor.h"
@@ -151,6 +152,10 @@ bool IsQuestWorthDoing(Player* bot, Quest const* quest)
 
     // DarkChaos: a crater quest whose objective has no spawn there cannot be finished.
     if (!DCCraterQuestline::IsPlayable(quest->GetQuestId()))
+        return false;
+
+    // DarkChaos: same for the quests of the leveling continents, judged against the map the bot is on.
+    if (!DCQuestSpawnIndex::IsPlayable(quest->GetQuestId(), bot->GetMapId()))
         return false;
 
     return true;

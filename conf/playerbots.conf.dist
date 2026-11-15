@@ -1680,6 +1680,33 @@ Playerbots.DCCraterQuestline.Hubs = "300001 300002,300010 300011,300020,300030,3
 # Default: 750:500,751:500,861:150
 Playerbots.DCLevelAreas.MapBotCaps = "750:500,751:500,861:150"
 
+# DCLevelAreas.QuestSpawnMaps: maps whose quests are checked against the map's own spawns. A quest
+# with a giver there whose turn-in, or a kill/object target of which, has no spawn there is never
+# taken (the list is logged at the first bot update), and a quest with no usable POI is worked from
+# the spawn positions of its targets and turn-in instead. Empty = off.
+# A quest given on these maps is also skipped when its QuestSortID is a zone of another map (a
+# battleground, dungeon, raid or another continent's city - the copy's stock map counts as this map),
+# or when it needs an item it does not hand out that no creature, skinning, pickpocket, chest or fishing
+# loot on the map gives.
+# On these maps the zone of an inn or flight master hub is also taken from the spawn table (zoneId)
+# rather than the terrain, which still carries stock area ids on some cloned tiles; every place where
+# the two differ is logged at startup.
+# Default: 750,751,861
+Playerbots.DCLevelAreas.QuestSpawnMaps = "750,751,861"
+
+# DCLevelAreas.SkipQuests: quest ids given on the QuestSpawnMaps that bots never take, for quests whose
+# mechanics a bot cannot do (scripted events, single elite bosses, credit from using an item). The quest
+# stats dump (DCQuestStats.DumpMinutes) shows candidates: many accepts, almost no completions, and
+# abandons for no_progress. Empty = none.
+# Default: "" (the DarkChaos live conf lists 13509,13529,13560,14131,14464,24467,27477,27487)
+Playerbots.DCLevelAreas.SkipQuests = ""
+
+# DCLevelAreas.QuestPoiMapAlias: quest POIs stored for the stock map also count on its copy, as
+# "<copy map>:<stock map>,...". The copies keep the stock coordinates. 861 (The Molten Front) is not a
+# copy; its entry only lets its quests, filed under QuestSortID 616 (Hyjal, a map 1 zone), count as local.
+# Default: 750:1,751:0,861:1
+Playerbots.DCLevelAreas.QuestPoiMapAlias = "750:1,751:0,861:1"
+
 # Level a death knight bot starts at when it is NOT given a crater slot.
 #
 # This realm sets StartHeroicPlayerLevel = 1 so that a player's death knight begins on the Azshara

@@ -418,6 +418,12 @@ public:
 
     // DarkChaos leveling continents (maps 750/751, plus 861 The Molten Front). Bot slots per map, see DCMapRoster.
     std::map<uint32, uint32> DCMapBotCaps;
+    // Maps whose quests are checked against their own spawns, see DCQuestSpawnIndex.
+    std::vector<uint32> DCQuestSpawnMaps;
+    // Quest POIs stored for the stock map (value) also count on the DC copy of it (key).
+    std::map<uint32, uint32> DCQuestPoiMapAlias;
+    // Quests given on those maps that bots never take (scripted, elite or item-use mechanics they cannot do).
+    std::vector<uint32> DCSkipQuests;
 
     // Level a bot death knight starts at when it is placed at Ebon Hold instead of the crater.
     // See BotStartLocations::GetDeathKnightStartLevel().

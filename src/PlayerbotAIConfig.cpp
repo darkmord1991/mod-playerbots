@@ -805,6 +805,16 @@ bool PlayerbotAIConfig::Initialize()
     parseMapPairs(
         sConfigMgr->GetOption<std::string>("Playerbots.DCLevelAreas.MapBotCaps", "750:500,751:500,861:150"),
         DCMapBotCaps);
+    // 861 (The Molten Front) is not a copy, but its quests keep QuestSortID 616 (Hyjal, a map 1 zone)
+    parseMapPairs(
+        sConfigMgr->GetOption<std::string>("Playerbots.DCLevelAreas.QuestPoiMapAlias", "750:1,751:0,861:1"),
+        DCQuestPoiMapAlias);
+    DCQuestSpawnMaps.clear();
+    LoadList<std::vector<uint32>>(
+        sConfigMgr->GetOption<std::string>("Playerbots.DCLevelAreas.QuestSpawnMaps", "750,751,861"), DCQuestSpawnMaps);
+    DCSkipQuests.clear();
+    LoadList<std::vector<uint32>>(sConfigMgr->GetOption<std::string>("Playerbots.DCLevelAreas.SkipQuests", ""),
+                                  DCSkipQuests);
     DeathKnightStartLevel = sConfigMgr->GetOption<uint32>("Playerbots.DeathKnightStartLevel", 55);
 
     RpgStatusProbWeight[RPG_WANDER_RANDOM] = sConfigMgr->GetOption<int32>("Playerbots.RpgStatusProbWeight.WanderRandom", 15);

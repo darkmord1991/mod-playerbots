@@ -9,6 +9,7 @@
 #include "ChatHelper.h"
 #include "Creature.h"
 #include "DCCraterQuestline.h"
+#include "DCQuestSpawnIndex.h"
 #include "GameObject.h"
 #include "GatherNodeMgr.h"
 #include "GossipDef.h"
@@ -669,9 +670,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
 
     QuestPOIVector const* poiVector = sObjectMgr->GetQuestPOIVector(questId);
     if (!poiVector)
-    {
-        return false;
-    }
+        return GetDCQuestSpawnPos(quest, poiInfo, toComplete);
 
     QuestStatusData const& q_status = bot->getQuestStatusMap().at(questId);
 
@@ -679,7 +678,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
     {
         for (QuestPOI const& qPoi : *poiVector)
         {
-            if (qPoi.MapId != bot->GetMapId())
+            if (!IsPoiOnBotMap(qPoi.MapId))
                 continue;
 
             // not the poi pos to reward quest
@@ -713,7 +712,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         }
 
         if (poiInfo.empty())
-            return false;
+            return GetDCQuestSpawnPos(quest, poiInfo, toComplete);
 
         return true;
     }
@@ -745,7 +744,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
     // Get POIs to go
     for (QuestPOI const& qPoi : *poiVector)
     {
-        if (qPoi.MapId != bot->GetMapId())
+        if (!IsPoiOnBotMap(qPoi.MapId))
             continue;
 
         bool inComplete = false;
@@ -785,10 +784,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
     }
 
     if (poiInfo.size() == 0)
-    {
-        // LOG_DEBUG("playerbots", "[New rpg] {}: No available poi can be found for quest {}", bot->GetName(), questId);
-        return false;
-    }
+        return GetDCQuestSpawnPos(quest, poiInfo, toComplete);
 
     return true;
 }
@@ -1036,8 +1032,8 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
             for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
             {
                 uint32 questId = bot->GetQuestSlotQuestId(slot);
-                if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end() ||
-                    !DCCraterQuestline::IsPlayable(questId))
+                if (!questId || botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end() ||
+                    !DCCraterQuestline::IsPlayable(questId) || !DCQuestSpawnIndex::IsPlayable(questId, bot->GetMapId()))
                     continue;
 
                 std::vector<POIInfo> poiInfo;
@@ -1154,8 +1150,8 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
             for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
             {
                 uint32 questId = bot->GetQuestSlotQuestId(slot);
-                if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end() ||
-                    !DCCraterQuestline::IsPlayable(questId))
+                if (!questId || botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end() ||
+                    !DCCraterQuestline::IsPlayable(questId) || !DCQuestSpawnIndex::IsPlayable(questId, bot->GetMapId()))
                     continue;
 
                 std::vector<POIInfo> poiInfo;
@@ -1330,6 +1326,81 @@ bool NewRpgBaseAction::GetCraterQuestlinePos(Quest const* quest, std::vector<POI
     }
 
     return !poiInfo.empty();
+}
+
+bool NewRpgBaseAction::GetDCQuestSpawnPos(Quest const* quest, std::vector<POIInfo>& poiInfo, bool toComplete)
+{
+    uint32 const questId = quest->GetQuestId();
+    uint32 const mapId = bot->GetMapId();
+    auto const status = bot->getQuestStatusMap().find(questId);
+    if (status == bot->getQuestStatusMap().end())
+        return false;
+
+    // The nearest `limit` positions within POI range, nearest first. With none in range, the nearest on the map:
+    // the spawns are known to be on this map, and a turn-in or target in a far zone (an Eastern Plaguelands
+    // breadcrumb handed in at Light's Hope) is still where the quest has to go.
+    auto const addNearest = [this, &poiInfo](std::vector<WorldPosition> const& source, size_t limit, int32 objectiveIdx)
+    {
+        std::vector<WorldPosition> positions;
+        for (WorldPosition const& pos : source)
+            if (bot->GetDistance2d(pos.GetPositionX(), pos.GetPositionY()) < 1500.0f)
+                positions.push_back(pos);
+
+        if (positions.empty())
+            positions = source;
+
+        size_t const count = std::min(positions.size(), limit);
+        std::partial_sort(positions.begin(), positions.begin() + count, positions.end(),
+                          [this](WorldPosition const& a, WorldPosition const& b)
+                          { return bot->GetExactDist(a) < bot->GetExactDist(b); });
+        for (size_t i = 0; i < count; ++i)
+            poiInfo.push_back({{positions[i].GetPositionX(), positions[i].GetPositionY()},
+                               objectiveIdx,
+                               positions[i].GetPositionZ()});
+    };
+
+    if (status->second.Status == QUEST_STATUS_COMPLETE)
+    {
+        if (!toComplete)
+            return false;
+
+        addNearest(DCQuestSpawnIndex::GetEnderPositions(questId, mapId), 1, -1);
+        return !poiInfo.empty();
+    }
+
+    if (status->second.Status != QUEST_STATUS_INCOMPLETE)
+        return false;
+
+    for (uint32 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+    {
+        if (!quest->RequiredNpcOrGo[i] || status->second.CreatureOrGOCount[i] >= quest->RequiredNpcOrGoCount[i])
+            continue;
+
+        addNearest(DCQuestSpawnIndex::GetObjectivePositions(questId, mapId, i), 5, static_cast<int32>(i));
+    }
+
+    // Item objectives: go where the item drops; the grind strategy kills and loots there. The objective index is
+    // QUEST_OBJECTIVES_COUNT + i, as for quest POIs, so DoIncompleteQuest checks the item count.
+    for (uint32 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+    {
+        uint32 const item = quest->RequiredItemId[i];
+        if (!item || status->second.ItemCount[i] >= quest->RequiredItemCount[i])
+            continue;
+
+        addNearest(DCQuestSpawnIndex::GetItemSourcePositions(item, mapId), 5,
+                   static_cast<int32>(QUEST_OBJECTIVES_COUNT + i));
+    }
+
+    return !poiInfo.empty();
+}
+
+bool NewRpgBaseAction::IsPoiOnBotMap(uint32 poiMapId) const
+{
+    if (poiMapId == bot->GetMapId())
+        return true;
+
+    auto const itr = sPlayerbotAIConfig.DCQuestPoiMapAlias.find(bot->GetMapId());
+    return itr != sPlayerbotAIConfig.DCQuestPoiMapAlias.end() && itr->second == poiMapId;
 }
 
 bool NewRpgBaseAction::CanPickUpCraterQuest(Quest const* quest)

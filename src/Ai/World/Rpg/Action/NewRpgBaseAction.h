@@ -68,6 +68,12 @@ protected:
     bool GetCraterQuestlinePos(Quest const* quest, std::vector<POIInfo>& poiInfo, bool toComplete);
     bool CanPickUpCraterQuest(Quest const* quest);
 
+    /* DARKCHAOS: LEVELING CONTINENTS, see DCQuestSpawnIndex */
+    // POI positions from the map's own spawns, for a quest with no usable POI on the bot's map.
+    bool GetDCQuestSpawnPos(Quest const* quest, std::vector<POIInfo>& poiInfo, bool toComplete);
+    // A POI stored for the stock map counts on its DarkChaos copy (Playerbots.DCLevelAreas.QuestPoiMapAlias).
+    bool IsPoiOnBotMap(uint32 poiMapId) const;
+
     // Destinations found by CheckRpgStatusAvailable, reused by RandomChangeStatus for the status it picks
     // so the search does not run twice in one status change.
     WorldPosition availableGrindPos;

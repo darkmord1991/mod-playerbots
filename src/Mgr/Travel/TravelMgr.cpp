@@ -13,6 +13,7 @@
 #include "ChatHelper.h"
 #include "Corpse.h"
 #include "Creature.h"
+#include "DCQuestSpawnIndex.h"
 #include "GameEventMgr.h"
 #include "Log.h"
 #include "Map.h"
@@ -4368,6 +4369,9 @@ void TravelMgr::Init()
     {
         PrepareZone2LevelBracket();
         PrepareDestinationCache();
+        // Startup, world thread: loads the item sources from the world DB, then builds the index the
+        // quest-giver index below and the bots' quest choice read.
+        DCQuestSpawnIndex::Init();
 
         if (sPlayerbotAIConfig.ProbTeleToQuestGivers > 0.0f)
             PrepareQuestGiverTeleportIndex();
