@@ -1232,7 +1232,10 @@ bool QuestObjectiveTravelDestination::isActive(Player* bot)
     if (getEntry() > 0)
     {
         CreatureTemplate const* cInfo = sObjectMgr->GetCreatureTemplate(getEntry());
-        if (cInfo && (int)cInfo->maxlevel - (int)bot->GetLevel() > 4)
+        if (!cInfo)
+            return false;
+
+        if ((int)cInfo->maxlevel - (int)bot->GetLevel() > 4)
             return false;
 
         // Do not try to hand-in dungeon/elite quests in instances without a group.
@@ -4499,10 +4502,19 @@ std::vector<std::vector<uint32>> TravelMgr::GetOptimalFlightDestinations(Player*
 
 const std::vector<WorldLocation> TravelMgr::GetTeleportLocations(Player* bot)
 {
-    if (sPlayerbotAIConfig.EnableNewRpgStrategy)
-        return GetTravelHubs(bot);
+    return GetTeleportLocations(bot, bot->GetLevel());
+}
 
-    return GetLevelCacheEntry(locsPerLevelCache, bot->GetLevel());
+const std::vector<WorldLocation> TravelMgr::GetTeleportLocations(Player* bot, uint32 level)
+{
+    std::map<uint8, std::vector<WorldLocation>> const& cache =
+        !sPlayerbotAIConfig.EnableNewRpgStrategy ? locsPerLevelCache
+        : bot->GetTeamId() == TEAM_ALLIANCE      ? allianceHubsPerLevelCache
+                                                 : hordeHubsPerLevelCache;
+
+    // DarkChaos: not an exact find. The caches stop at the highest zone bracket (80) while bots level far past it;
+    // GetLevelCacheEntry reads the highest filled entry at or below the level, and never inserts (map threads).
+    return GetLevelCacheEntry(cache, static_cast<uint8>(std::min<uint32>(level, 255)));
 }
 
 const std::vector<WorldLocation> TravelMgr::GetTravelHubs(Player* bot)
@@ -4919,45 +4931,20 @@ void TravelMgr::PrepareDestinationCache()
             CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureDataList[0].id);
             uint32 level = (creatureTemplate->minlevel + creatureTemplate->maxlevel + 1) / 2;
 
-            // Use a real spawn of the cell as the grind destination. The cell key rounds every axis
-            // to 50 yards, so key * 50 put the destination up to 25 yards above or below the ground
-            // (on Azshara Crater 15-30 yards): pathing there never closes the distance, and the stuck
-            // recovery in MoveFarTo then teleports the bot onto that same height - into the air or
-            // under the terrain. The spawn nearest the cell's centre keeps the cell's position while
-            // standing where a creature of the cell actually stands.
-            float centerX = 0.0f;
-            float centerY = 0.0f;
-            for (CreatureData const& data : creatureDataList)
-            {
-                centerX += data.posX;
-                centerY += data.posY;
-            }
-            centerX /= static_cast<float>(creatureDataList.size());
-            centerY /= static_cast<float>(creatureDataList.size());
+            std::vector<WorldPosition> spawns;
+            spawns.reserve(creatureDataList.size());
+            for (CreatureData const& creatureData : creatureDataList)
+                spawns.emplace_back(std::get<0>(gridTuple), creatureData.posX, creatureData.posY, creatureData.posZ);
 
-            CreatureData const* anchor = &creatureDataList[0];
-            float bestDistSq = -1.0f;
-            for (CreatureData const& data : creatureDataList)
-            {
-                float const dx = data.posX - centerX;
-                float const dy = data.posY - centerY;
-                float const distSq = dx * dx + dy * dy;
-                if (bestDistSq < 0.0f || distSq < bestDistSq)
-                {
-                    bestDistSq = distSq;
-                    anchor = &data;
-                }
-            }
-
-            WorldLocation const grindLoc(std::get<0>(gridTuple), anchor->posX, anchor->posY, anchor->posZ);
-
+            // A real spawn, not the grid key * 50, which can be up to 25 yd in the air or underground.
+            WorldLocation const loc = WorldPosition(spawns, WP_MEAN_CENTROID);
             for (int32 l = (int32)level - (int32)sPlayerbotAIConfig.RandomBotTeleLowerLevel;
                  l <= (int32)level + (int32)sPlayerbotAIConfig.RandomBotTeleHigherLevel; l++)
             {
                 if (l < 1 || l > int32(maxLevel))
                     continue;
 
-                locsPerLevelCache[(uint8)l].push_back(grindLoc);
+                locsPerLevelCache[(uint8)l].push_back(loc);
             }
         }
     }
