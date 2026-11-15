@@ -524,6 +524,23 @@ void PlayerbotHolder::OnBotLogin(Player* const bot)
         return;
     }
 
+    // DarkChaos: free talent points at login, before the strategies below (they follow the talents). The core
+    // resets a character that has spent more points than it now has (DC.Talents.MaxPoints lowers the count above
+    // level 80), and bots only spend free points on a level-up, so a reset bot stayed talentless until its next
+    // level (melee bots above 130 lost about half their kill speed, 2026-11-15). Spend them now, under the same
+    // keys as the level-up path.
+    if (bot->GetFreeTalentPoints() > 0)
+    {
+        bool const isRandomBot = sRandomPlayerbotMgr.IsRandomBot(bot);
+        if (isRandomBot ? sPlayerbotAIConfig.AutoPickTalents
+                        : sPlayerbotAIConfig.AutoPickTalentsForPlayerControlledBots)
+        {
+            PlayerbotFactory factory(bot, bot->GetLevel());
+            factory.InitTalentsTree(true, true, isRandomBot);
+            factory.InitPetTalents();
+        }
+    }
+
     Player* master = botAI->GetMaster();
 
     Group* group = bot->GetGroup();
