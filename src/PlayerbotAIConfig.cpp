@@ -790,6 +790,21 @@ bool PlayerbotAIConfig::Initialize()
         if (!npcs.empty())
             DCCraterQuestlineHubs.push_back(std::move(npcs));
     }
+
+    // "<map>:<value>,..." pairs, e.g. "750:500,751:500,861:150"
+    auto const parseMapPairs = [](std::string const& value, std::map<uint32, uint32>& out)
+    {
+        out.clear();
+        for (std::string const& pair : split(value, ','))
+        {
+            std::vector<std::string> const parts = split(pair, ':');
+            if (parts.size() == 2)
+                out[static_cast<uint32>(atoi(parts[0].c_str()))] = static_cast<uint32>(atoi(parts[1].c_str()));
+        }
+    };
+    parseMapPairs(
+        sConfigMgr->GetOption<std::string>("Playerbots.DCLevelAreas.MapBotCaps", "750:500,751:500,861:150"),
+        DCMapBotCaps);
     DeathKnightStartLevel = sConfigMgr->GetOption<uint32>("Playerbots.DeathKnightStartLevel", 55);
 
     RpgStatusProbWeight[RPG_WANDER_RANDOM] = sConfigMgr->GetOption<int32>("Playerbots.RpgStatusProbWeight.WanderRandom", 15);

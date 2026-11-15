@@ -8,6 +8,7 @@
 
 #include "DatabaseEnv.h"
 #include "Log.h"
+#include "ObjectAccessor.h"
 #include "PlayerbotAIConfig.h"
 #include "QueryResult.h"
 #include "SharedDefines.h"
@@ -15,7 +16,9 @@
 #include "World.h"
 
 #include <algorithm>
+#include <map>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -63,6 +66,22 @@ namespace
 
     std::mutex CraterRosterMutex;
     std::unordered_set<uint32> CraterResidents;
+
+    std::mutex DCMapRosterMutex;
+    std::unordered_map<uint32, std::unordered_set<uint32>> DCMapResidents;  // map -> bot character guids
+
+    // A full map first gives up the slots of bots that are no longer in the world: logging out releases a slot
+    // (PlayerbotHolder::LogoutPlayerBot), but a session can also end another way. Called with DCMapRosterMutex held.
+    void DropOfflineResidents(std::unordered_set<uint32>& residents)
+    {
+        for (auto it = residents.begin(); it != residents.end();)
+        {
+            if (ObjectAccessor::FindPlayerByLowGUID(*it))
+                ++it;
+            else
+                it = residents.erase(it);
+        }
+    }
 }
 
 BotStartLocation const& BotStartLocations::GetCraterStart() { return CraterStart; }
@@ -162,4 +181,91 @@ void CraterRoster::Release(uint32 guid)
 {
     std::lock_guard<std::mutex> lock(CraterRosterMutex);
     CraterResidents.erase(guid);
+}
+
+void DCMapRoster::Load()
+{
+    std::unordered_map<uint32, uint32> saved;
+    std::map<uint32, uint32> const& caps = sPlayerbotAIConfig.DCMapBotCaps;
+
+    if (!caps.empty())
+    {
+        std::string prefix = sPlayerbotAIConfig.RandomBotAccountPrefix;
+        CharacterDatabase.EscapeString(prefix);
+
+        std::string mapList;
+        for (auto const& [mapId, cap] : caps)
+            mapList += (mapList.empty() ? "" : ",") + std::to_string(mapId);
+
+        // Only for the startup line: no bot is online yet, so every slot is free. A bot saved on a capped map
+        // takes one as it logs in (RandomPlayerbotMgr::ProcessBot) or is moved off while the map is full.
+        std::string const sql = Acore::StringFormat(
+            "SELECT map, COUNT(*) FROM characters WHERE map IN ({}) AND account IN "
+            "(SELECT id FROM {}.account WHERE username LIKE '{}%') GROUP BY map",
+            mapList, LoginDatabase.GetConnectionInfo()->database, prefix);  // sql-ok: map ids from config
+
+        if (QueryResult result = CharacterDatabase.Query(sql))
+        {
+            do
+            {
+                saved[(*result)[0].Get<uint32>()] = static_cast<uint32>((*result)[1].Get<uint64>());
+            } while (result->NextRow());
+        }
+
+        for (auto const& [mapId, cap] : caps)
+            LOG_INFO("playerbots", "Map {}: {} bots online at most, {} bots saved there.", mapId, cap, saved[mapId]);
+    }
+
+    std::lock_guard<std::mutex> lock(DCMapRosterMutex);
+    DCMapResidents.clear();
+}
+
+bool DCMapRoster::IsCapped(uint32 mapId) { return sPlayerbotAIConfig.DCMapBotCaps.count(mapId) != 0; }
+
+bool DCMapRoster::CanEnter(uint32 mapId, uint32 guid)
+{
+    auto const cap = sPlayerbotAIConfig.DCMapBotCaps.find(mapId);
+    if (cap == sPlayerbotAIConfig.DCMapBotCaps.end())
+        return true;
+
+    std::lock_guard<std::mutex> lock(DCMapRosterMutex);
+    std::unordered_set<uint32>& residents = DCMapResidents[mapId];
+    if (residents.count(guid))
+        return true;
+
+    if (residents.size() >= cap->second)
+        DropOfflineResidents(residents);
+
+    return residents.size() < cap->second;
+}
+
+bool DCMapRoster::Claim(uint32 mapId, uint32 guid)
+{
+    auto const cap = sPlayerbotAIConfig.DCMapBotCaps.find(mapId);
+    if (cap == sPlayerbotAIConfig.DCMapBotCaps.end())
+        return true;
+
+    std::lock_guard<std::mutex> lock(DCMapRosterMutex);
+    std::unordered_set<uint32>& residents = DCMapResidents[mapId];
+    if (residents.count(guid))
+        return true;
+
+    if (residents.size() >= cap->second)
+        DropOfflineResidents(residents);
+
+    if (residents.size() >= cap->second)
+        return false;
+
+    for (auto& [otherMap, others] : DCMapResidents)
+        others.erase(guid);
+
+    residents.insert(guid);
+    return true;
+}
+
+void DCMapRoster::Release(uint32 guid)
+{
+    std::lock_guard<std::mutex> lock(DCMapRosterMutex);
+    for (auto& [mapId, residents] : DCMapResidents)
+        residents.erase(guid);
 }

@@ -416,6 +416,9 @@ public:
     bool DCCraterQuestlineEnabled;
     std::vector<std::vector<uint32>> DCCraterQuestlineHubs;
 
+    // DarkChaos leveling continents (maps 750/751, plus 861 The Molten Front). Bot slots per map, see DCMapRoster.
+    std::map<uint32, uint32> DCMapBotCaps;
+
     // Level a bot death knight starts at when it is placed at Ebon Hold instead of the crater.
     // See BotStartLocations::GetDeathKnightStartLevel().
     uint32 DeathKnightStartLevel;

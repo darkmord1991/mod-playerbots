@@ -841,6 +841,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
     bool nameCached = false;
 
     CraterRoster::Load();
+    DCMapRoster::Load();
 
     for (uint32 accountNumber = 0; accountNumber < totalAccountCount; ++accountNumber)
     {

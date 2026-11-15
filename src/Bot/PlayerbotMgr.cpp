@@ -6,6 +6,7 @@
 
 #include "PlayerbotMgr.h"
 #include "PlayerbotsDatabase.h"
+#include "BotStartLocation.h"
 #include "BroadcastHelper.h"
 #include "ChannelMgr.h"
 #include "CharacterCache.h"
@@ -410,6 +411,9 @@ void PlayerbotHolder::LogoutPlayerBot(ObjectGuid guid)
             bot->SetTaxiCheater(false);
 
         bot->SaveToDB(false, false);
+
+        // DarkChaos: a slot on a capped leveling continent is held only while the bot is online (DCMapRoster)
+        DCMapRoster::Release(guid.GetCounter());
 
         WorldSession* botWorldSessionPtr = bot->GetSession();
         [[maybe_unused]] WorldSession* masterWorldSessionPtr = nullptr;     // Remove [[maybe_unused]] tag if timed logout implemented.

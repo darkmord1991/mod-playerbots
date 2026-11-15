@@ -78,4 +78,27 @@ public:
     static void Release(uint32 guid);
 };
 
+// DarkChaos: the bot slots on the leveling continents capped by Playerbots.DCLevelAreas.MapBotCaps (maps 750 and
+// 751). Unlike the crater's, a slot is held only while the bot is online: it is taken when the bot is teleported
+// onto the map or logs in there (RandomPlayerbotMgr::ProcessBot), and given up when it is teleported to any other
+// map or logs out. Counting offline characters too, as the crater does, left 168 of map 750's 500 slots to bots
+// that were not logged in (2026-11-11) while 174 online bots of its levels waited elsewhere. A bot holds at most
+// one slot.
+//
+// Called from the world thread and from bot AI on the map threads, so every member locks.
+class DCMapRoster
+{
+public:
+    // Empties every capped map's roster and logs how many bots are saved on each. Startup only (world thread,
+    // blocking query).
+    static void Load();
+    static bool IsCapped(uint32 mapId);
+    // True when the map is not capped, the bot already holds a slot there, or one is free.
+    static bool CanEnter(uint32 mapId, uint32 guid);
+    // Takes a slot on a capped map, giving up any slot held on another. False when the map is full.
+    static bool Claim(uint32 mapId, uint32 guid);
+    // Gives up the bot's slot, whichever map it is on.
+    static void Release(uint32 guid);
+};
+
 #endif

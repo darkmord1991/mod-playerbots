@@ -1810,6 +1810,16 @@ bool RandomPlayerbotMgr::ProcessBot(Player* bot)
         return true;
     }
 
+    // Same for a capped leveling continent (DCMapRoster). While every hub for its level is full it stays put
+    // without a slot and tries again next time.
+    if (DCMapRoster::IsCapped(bot->GetMapId()) && !DCMapRoster::Claim(bot->GetMapId(), bot->GetGUID().GetCounter()))
+    {
+        LOG_DEBUG("playerbots", "Bot #{} <{}>: no slot on map {}, moving it off", botId, bot->GetName(),
+                  bot->GetMapId());
+        RandomTeleportForLevel(bot);
+        return true;
+    }
+
     // only randomize and teleport idle bots
     bool idleBot = false;
     if (TravelTarget* target = botAI->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get())
@@ -1954,13 +1964,21 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
     ObjectGuid::LowType const botGuid = bot->GetGUID().GetCounter();
     bool const stayInCrater = StaysInCrater(bot);
     bool const craterOpen = CraterRoster::IsResident(botGuid) || CraterRoster::HasFreeSlot();
+    // Capped leveling continents (DCMapRoster): only while the bot holds a slot there or one is free.
+    std::map<uint32, bool> dcMapOpen;
+    for (auto const& [mapId, cap] : sPlayerbotAIConfig.DCMapBotCaps)
+        dcMapOpen[mapId] = DCMapRoster::CanEnter(mapId, botGuid);
 
     // Do not teleport to maps disabled in config
     tlocs.erase(std::remove_if(tlocs.begin(), tlocs.end(),
-                               [craterMapId, stayInCrater, craterOpen](WorldPosition l)
+                               [craterMapId, stayInCrater, craterOpen, &dcMapOpen](WorldPosition l)
                                {
                                    bool const isCrater = l.GetMapId() == craterMapId;
                                    if (isCrater ? !craterOpen : stayInCrater)
+                                       return true;
+
+                                   auto const dcMap = dcMapOpen.find(l.GetMapId());
+                                   if (dcMap != dcMapOpen.end() && !dcMap->second)
                                        return true;
 
                                    std::vector<uint32>::iterator i =
@@ -2039,8 +2057,13 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
             break;
         }
 
-        // The filter above saw the crater roster as it was then, and other map threads teleport bots
-        // too. Take the slot now that the bot is really going, or hand it back when it leaves.
+        // The filter above saw the rosters as they were then, and other map threads teleport bots
+        // too. Take the slot now that the bot is really going, or hand it back when it leaves. The
+        // continent slot is taken first so that a full continent never costs the bot its crater slot.
+        bool const toCappedMap = DCMapRoster::IsCapped(loc.GetMapId());
+        if (toCappedMap && !DCMapRoster::Claim(loc.GetMapId(), botGuid))
+            continue;
+
         if (loc.GetMapId() == craterMapId)
         {
             if (!CraterRoster::Claim(botGuid))
@@ -2048,6 +2071,9 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
         }
         else
             CraterRoster::Release(botGuid);
+
+        if (!toCappedMap)
+            DCMapRoster::Release(botGuid);
 
         bot->GetMotionMaster()->Clear();
         PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);

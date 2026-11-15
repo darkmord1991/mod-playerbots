@@ -1669,6 +1669,17 @@ Playerbots.DCCraterQuestline.Enable = 1
 # Default: 300001 300002,300010 300011,300020,300030,300040,300050,300060,300070 300071
 Playerbots.DCCraterQuestline.Hubs = "300001 300002,300010 300011,300020,300030,300040,300050,300060,300070 300071"
 
+# DarkChaos leveling continents (map 750 Mount Hyjal 80-130, map 751 Lordaeron 130-160, map 861 The Molten
+# Front 124-130).
+#
+# DCLevelAreas.MapBotCaps caps the ONLINE bots on each continent, as "<map>:<slots>,...". Unlike
+# AzsharaCraterMaxBots, a slot is held only while the bot is online: from when it is teleported onto
+# the map or logs in there until it is teleported to another map or logs out. A bot without a slot is
+# moved off the map when it is next processed. Size the caps together with Playerbots.LevelBrackets,
+# so the online bots levelled into 81-130 and 131-160 fit. Empty = no caps.
+# Default: 750:500,751:500,861:150
+Playerbots.DCLevelAreas.MapBotCaps = "750:500,751:500,861:150"
+
 # Level a death knight bot starts at when it is NOT given a crater slot.
 #
 # This realm sets StartHeroicPlayerLevel = 1 so that a player's death knight begins on the Azshara
