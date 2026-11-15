@@ -271,13 +271,8 @@ static uint32 GetRequiredTotemSpellId(PlayerbotAI* botAI, char const* strategies
         if (botAI->HasStrategy(strategies[i], BOT_STATE_COMBAT))
         {
             // Find the highest-rank spell the bot knows
-            for (size_t j = 0; j < spellCounts[i]; ++j)
-            {
-                if (bot->HasSpell(spellList[i][j]))
-                {
-                    return spellList[i][j];
-                }
-            }
+            if (uint32 spellId = HighestKnownTotemRank(bot, spellList[i], spellCounts[i]))
+                return spellId;
         }
     }
 
@@ -311,11 +306,9 @@ bool NoEarthTotemTrigger::IsActive()
     uint32 requiredSpell = GetRequiredTotemSpellId(botAI, names, spells, counts, 4);
 
     // EXCEPTION: If Stoneclaw Totem is out and in range, consider the slot "occupied" (do not fire the trigger)
-    for (size_t i = 0; i < STONECLAW_TOTEM_COUNT; ++i)
-    {
-        if (currentSpell == STONECLAW_TOTEM[i] && totem && totem->GetDistance(bot) <= 30.0f)
-            return false;
-    }
+    if (IsTotemRankOf(currentSpell, STONECLAW_TOTEM, STONECLAW_TOTEM_COUNT) && totem &&
+        totem->GetDistance(bot) <= 30.0f)
+        return false;
 
     // If no relevant strategy, only care if the slot is empty or totem is too far away
     if (!requiredSpell)
@@ -448,17 +441,7 @@ bool NoAirTotemTrigger::IsActive()
 
 bool SetTotemTrigger::IsActive()
 {
-   uint32 highestKnownSpell = 0;
-   for (size_t i = 0; i < totemSpellIdsCount; ++i)
-   {
-       const uint32 spellId = totemSpellIds[i];
-       if (bot->HasSpell(spellId))
-       {
-           highestKnownSpell = spellId;
-           break;
-       }
-   }
-
+   uint32 const highestKnownSpell = HighestKnownTotemRank(bot, totemSpellIds, totemSpellIdsCount);
    if (!highestKnownSpell)
        return false;
 

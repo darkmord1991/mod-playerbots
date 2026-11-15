@@ -126,16 +126,7 @@ bool CastSpiritWalkAction::Execute(Event /*event*/)
 // then adds it to the Call of the Elements bar.
 bool SetTotemAction::Execute(Event /*event*/)
 {
-    uint32 totemSpell = 0;
-    for (size_t i = 0; i < totemSpellIdsCount; ++i)
-    {
-        if (bot->HasSpell(totemSpellIds[i]))
-        {
-            totemSpell = totemSpellIds[i];
-            break;
-        }
-    }
-
+    uint32 const totemSpell = HighestKnownTotemRank(bot, totemSpellIds, totemSpellIdsCount);
     if (!totemSpell)
         return false;
 

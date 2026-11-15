@@ -8,10 +8,43 @@
 #define PLAYERBOTS_TOTEMSSHAMANSTRATEGY_H
 
 #include "GenericShamanStrategy.h"
+#include "Player.h"
+#include "SpellMgr.h"
 #include <string>
 #include <vector>
 
 // This is the header with all of the totem-related constants and arrays used in the Shaman strategies.
+
+// DarkChaos: the totem ranks above level 80 (tools/balance/gen_class_ranks.py) are not in the lists below; they
+// continue the stock rank chains. The highest rank a bot knows is therefore the highest listed rank it knows,
+// followed up its chain. Comparing against the listed rank alone made a bot with a new rank recast its totem
+// forever, the totem's spell never matching the "required" one.
+inline uint32 HighestKnownTotemRank(Player* bot, uint32 const* ranks, size_t count)
+{
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (!bot->HasSpell(ranks[i]))
+            continue;
+
+        uint32 spellId = ranks[i];
+        for (uint32 next = sSpellMgr->GetNextSpellInChain(spellId); next && bot->HasSpell(next);
+             next = sSpellMgr->GetNextSpellInChain(next))
+            spellId = next;
+
+        return spellId;
+    }
+
+    return 0;
+}
+
+// True if `spellId` is any rank of the totem listed in `ranks` (the stock ranks or a later one of the same chain).
+inline bool IsTotemRankOf(uint32 spellId, uint32 const* ranks, size_t count)
+{
+    if (!spellId || !count)
+        return false;
+
+    return sSpellMgr->GetFirstSpellInChain(spellId) == sSpellMgr->GetFirstSpellInChain(ranks[count - 1]);
+}
 
 // Totem Bar Slot Constants
 #define TOTEM_BAR_SLOT_FIRE 132
