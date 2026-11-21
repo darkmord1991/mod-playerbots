@@ -15,9 +15,29 @@
 class PlayerbotAI;
 
 DEBUFF_CHECKISOWNER_TRIGGER(HolyFireTrigger, "holy fire");
-DEBUFF_CHECKISOWNER_TRIGGER(ShadowWordPainTrigger, "shadow word: pain");
+
+// The 8 s default rarely passes: the group dps estimate it divides by runs several times above a solo bot's damage.
+inline constexpr float SHADOW_DOT_MIN_LIFETIME = 0.5f;
+
+class ShadowWordPainTrigger : public DebuffTrigger
+{
+public:
+    ShadowWordPainTrigger(PlayerbotAI* botAI)
+        : DebuffTrigger(botAI, "shadow word: pain", 1, true, SHADOW_DOT_MIN_LIFETIME)
+    {
+    }
+};
+
 DEBUFF_ENEMY_TRIGGER(ShadowWordPainOnAttackerTrigger, "shadow word: pain");
-DEBUFF_CHECKISOWNER_TRIGGER(VampiricTouchTrigger, "vampiric touch");
+
+class VampiricTouchTrigger : public DebuffTrigger
+{
+public:
+    VampiricTouchTrigger(PlayerbotAI* botAI) : DebuffTrigger(botAI, "vampiric touch", 1, true, SHADOW_DOT_MIN_LIFETIME)
+    {
+    }
+};
+
 DEBUFF_ENEMY_TRIGGER(VampiricTouchOnAttackerTrigger, "vampiric touch on attacker");
 BUFF_TRIGGER(VampiricEmbraceTrigger, "vampiric embrace");
 CURE_TRIGGER(DispelMagicTrigger, "dispel magic", DISPEL_MAGIC);
@@ -31,7 +51,16 @@ BUFF_TRIGGER(InnerFocusTrigger, "inner focus");
 CC_TRIGGER(ShackleUndeadTrigger, "shackle undead");
 INTERRUPT_TRIGGER(SilenceTrigger, "silence");
 INTERRUPT_HEALER_TRIGGER(SilenceEnemyHealerTrigger, "silence");
-DEBUFF_CHECKISOWNER_TRIGGER(DevouringPlagueTrigger, "devouring plague");
+
+class DevouringPlagueTrigger : public DebuffTrigger
+{
+public:
+    DevouringPlagueTrigger(PlayerbotAI* botAI)
+        : DebuffTrigger(botAI, "devouring plague", 1, true, SHADOW_DOT_MIN_LIFETIME)
+    {
+    }
+};
+
 BUFF_TRIGGER(TouchOfWeaknessTrigger, "touch of weakness");
 DEBUFF_TRIGGER(HexOfWeaknessTrigger, "hex of weakness");
 BUFF_TRIGGER(ShadowguardTrigger, "shadowguard");

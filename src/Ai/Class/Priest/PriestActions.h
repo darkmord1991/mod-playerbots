@@ -10,6 +10,7 @@
 #include "GenericSpellActions.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+#include "PriestTriggers.h"
 
 class PlayerbotAI;
 
@@ -118,7 +119,16 @@ public:
 SPELL_ACTION(CastShadowWordDeathAction, "shadow word: death");
 
 // shadow
-DEBUFF_CHECKISOWNER_ACTION(CastShadowWordPainAction, "shadow word: pain");
+// A debuff's lifetime check runs twice, in its trigger and again in its action. The three damage-over-time spells
+// take SHADOW_DOT_MIN_LIFETIME (PriestTriggers.h) in both, or the action's 8 s default blocks what the trigger allows.
+class CastShadowWordPainAction : public CastDebuffSpellAction
+{
+public:
+    CastShadowWordPainAction(PlayerbotAI* botAI)
+        : CastDebuffSpellAction(botAI, "shadow word: pain", true, SHADOW_DOT_MIN_LIFETIME)
+    {
+    }
+};
 DEBUFF_ENEMY_ACTION(CastShadowWordPainOnAttackerAction, "shadow word: pain");
 SPELL_ACTION(CastMindBlastAction, "mind blast");
 SPELL_ACTION(CastPsychicScreamAction, "psychic scream");
@@ -150,10 +160,24 @@ BUFF_ACTION(CastShadowformAction, "shadowform");
 SPELL_ACTION(CastSilenceAction, "silence");
 ENEMY_HEALER_ACTION(CastSilenceOnEnemyHealerAction, "silence");
 // shadow talents 2.4.3
-DEBUFF_CHECKISOWNER_ACTION(CastVampiricTouchAction, "vampiric touch");
+class CastVampiricTouchAction : public CastDebuffSpellAction
+{
+public:
+    CastVampiricTouchAction(PlayerbotAI* botAI)
+        : CastDebuffSpellAction(botAI, "vampiric touch", true, SHADOW_DOT_MIN_LIFETIME)
+    {
+    }
+};
 DEBUFF_ENEMY_ACTION(CastVampiricTouchOnAttackerAction, "vampiric touch");
 // racials
-DEBUFF_CHECKISOWNER_ACTION(CastDevouringPlagueAction, "devouring plague");
+class CastDevouringPlagueAction : public CastDebuffSpellAction
+{
+public:
+    CastDevouringPlagueAction(PlayerbotAI* botAI)
+        : CastDebuffSpellAction(botAI, "devouring plague", true, SHADOW_DOT_MIN_LIFETIME)
+    {
+    }
+};
 BUFF_ACTION(CastTouchOfWeaknessAction, "touch of weakness");
 DEBUFF_ACTION(CastHexOfWeaknessAction, "hex of weakness");
 BUFF_ACTION(CastShadowguardAction, "shadowguard");
