@@ -2439,6 +2439,14 @@ int32 PlayerbotAI::GetMeleeIndex(Player* player)
     return 0;
 }
 
+// DarkChaos: a protection warrior can dual wield, and above level 130 a one-handed weapon outscores the few
+// shields there. Those bots ended up with two weapons and lost Shield Slam, Devastate and their blocks, so the
+// gear code asks here before it puts a weapon into the off hand.
+bool PlayerbotAI::KeepsOffhandForShield(Player* player)
+{
+    return player->getClass() == CLASS_WARRIOR && AiFactory::GetPlayerSpecTab(player) == WARRIOR_TAB_PROTECTION;
+}
+
 bool PlayerbotAI::IsTank(Player* player, bool bySpec)
 {
     PlayerbotAI* botAi = GET_PLAYERBOT_AI(player);
@@ -6581,7 +6589,7 @@ uint8 PlayerbotAI::FindEquipSlot(ItemTemplate const* proto, uint32 slot, bool sw
 
             // suggest offhand slot only if know dual wielding
             // (this will be replace mainhand weapon at auto equip instead unwonted "you don't known dual wielding" ...
-            if (bot->CanDualWield())
+            if (bot->CanDualWield() && !KeepsOffhandForShield(bot))
                 slots[1] = EQUIPMENT_SLOT_OFFHAND;
             break;
         }

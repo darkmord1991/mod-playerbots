@@ -456,6 +456,8 @@ public:
     static bool IsTank(Player* player, bool bySpec = false);
     static bool IsHeal(Player* player, bool bySpec = false);
     static bool IsDps(Player* player, bool bySpec = false);
+    // DarkChaos: a spec that needs a shield although its class can dual wield (protection warrior).
+    static bool KeepsOffhandForShield(Player* player);
     static bool IsRanged(Player* player, bool bySpec = false);
     static bool IsMelee(Player* player, bool bySpec = false);
     static bool IsCaster(Player* player, bool bySpec = false);

@@ -1162,6 +1162,14 @@ uint32 PlayerbotFactory::CountStaleEquipment() const
         if (!proto || proto->Quality == ITEM_QUALITY_HEIRLOOM || proto->InventoryType == INVTYPE_RELIC)
             continue;
 
+        // A shield tank holding anything else in its off hand needs the gear pass whatever the item's level.
+        if (slot == EQUIPMENT_SLOT_OFFHAND && proto->InventoryType != INVTYPE_SHIELD &&
+            PlayerbotAI::KeepsOffhandForShield(bot))
+        {
+            ++stale;
+            continue;
+        }
+
         if (proto->RequiredLevel + gap <= botLevel)
             ++stale;
     }
@@ -2734,6 +2742,11 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                             proto->Class != ITEM_CLASS_WEAPON)
                             continue;
 
+                        // DarkChaos: only shields are candidates, so the search widens until it finds one.
+                        if (slot == EQUIPMENT_SLOT_OFFHAND && proto->InventoryType != INVTYPE_SHIELD &&
+                            PlayerbotAI::KeepsOffhandForShield(bot))
+                            continue;
+
                         int32 bestRandomProp = 0;
                         if (proto->RandomProperty || proto->RandomSuffix)
                             bestRandomProp = calculator.PickBestRandomPropertyId(itemId);
@@ -2794,6 +2807,10 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
 
         if (incremental && oldItem)
         {
+            // DarkChaos: the candidates of a shield tank's off hand are shields only, and no shield outscores the
+            // weapon it has to replace.
+            bool const shieldOverWeapon = slot == EQUIPMENT_SLOT_OFFHAND && PlayerbotAI::KeepsOffhandForShield(bot) &&
+                                          oldItem->GetTemplate()->InventoryType != INVTYPE_SHIELD;
             float old_score = calculator.CalculateItem(oldItem->GetEntry(), oldItem->GetItemRandomPropertyId(), slot);
             // DarkChaos: above 80 a stale item (DCStaleGear.LevelGap behind the bot) gives way to anything better.
             // The 1.2x bar takes 40-50 item levels: bots at 146-160 wore 448 against the reference curve's 490.
@@ -2804,7 +2821,7 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                                   oldProto->Quality != ITEM_QUALITY_HEIRLOOM &&
                                   oldProto->RequiredLevel + staleGap <= bot->GetLevel();
             bool const tooSmall = staleOld ? bestScoreForSlot <= old_score : bestScoreForSlot < 1.2f * old_score;
-            if (tooSmall)
+            if (!shieldOverWeapon && tooSmall)
                 continue;
         }
         if (oldItem)
