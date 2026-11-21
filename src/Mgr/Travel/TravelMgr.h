@@ -1010,6 +1010,9 @@ private:
     {
         WorldLocation loc;
         uint32 entry;
+        // Stock capitals serve both here: RandomTeleport drops an enemy capital by its zone team.
+        bool forHorde = true;
+        bool forAlliance = true;
     };
 
     // The per-level caches only hold the levels their destinations were built for: every zone bracket

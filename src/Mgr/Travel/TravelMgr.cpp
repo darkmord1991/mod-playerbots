@@ -56,6 +56,9 @@ static const std::vector<Capital> capitals = {
     { AREA_DALARAN,         TEAM_NEUTRAL,  "Dalaran",       {30604, 30605, 30607, 28675, 28676, 28677, 29530} }
 };
 
+// Dalaran is the last stock banker city. Not DEFAULT_MAX_LEVEL: a raised level cap raises that too.
+static constexpr uint32 STOCK_BANKER_MAX_LEVEL = 80;
+
 static Capital const* FindCapitalByZone(uint32 zoneId)
 {
     for (Capital const& capital : capitals)
@@ -4533,15 +4536,16 @@ const std::vector<WorldLocation> TravelMgr::GetTravelHubs(Player* bot)
 std::vector<WorldLocation> TravelMgr::GetCityLocations(Player* bot)
 {
     uint32 level = bot->GetLevel();
+    TeamId botTeamId = bot->GetTeamId();
 
     std::vector<WorldLocation> fallbackLocations;
     for (auto& bLoc : bankerLocsPerLevelCache[level])
-        fallbackLocations.push_back(bLoc.loc);
+        if (botTeamId == TEAM_ALLIANCE ? bLoc.forAlliance : bLoc.forHorde)
+            fallbackLocations.push_back(bLoc.loc);
 
     if (!sPlayerbotAIConfig.EnableWeightTeleToCityBankers)
         return fallbackLocations;
 
-    TeamId botTeamId = bot->GetTeamId();
     std::unordered_set<uint32> validBankerCities;
     for (auto& loc : bankerLocsPerLevelCache[level])
     {
@@ -4853,6 +4857,7 @@ void TravelMgr::PrepareDestinationCache()
     uint32 flightMastersCount = 0;
     uint32 innkeepersCount = 0;
     uint32 bankerCount = 0;
+    uint32 zoneBankerSlots = 0;  // (banker, level) pairs above the stock cap
 
     LOG_INFO("playerbots", "Preparing destination caches for {} levels...", maxLevel);
 
@@ -5041,8 +5046,33 @@ void TravelMgr::PrepareDestinationCache()
             bLoc.loc = WorldLocation(mapId, x + cos(orient) * 6.0f, y + sin(orient) * 6.0f, z + 2.0f, orient + M_PI);
             bLoc.entry = templateEntry;
             uint32 level = (creatureTemplate->minlevel + creatureTemplate->maxlevel + 1) / 2;
+            FactionTemplateEntry const* bankerFaction = sFactionTemplateStore.LookupEntry(creatureTemplate->faction);
+            auto const servesZoneLevel = [this, bankerFaction, spawnZone](TeamId team, uint32 botLevel)
+            {
+                uint32 const enemyMask = team == TEAM_HORDE ? FACTION_MASK_HORDE : FACTION_MASK_ALLIANCE;
+                if (!bankerFaction || (bankerFaction->hostileMask & enemyMask))
+                    return false;
+
+                LevelBracket const* bracket = GetZoneBracket(spawnZone, team);
+                return bracket && bracket->InsideBracket(botLevel);
+            };
             for (uint32 l = 1; l <= maxLevel; l++)
             {
+                // DarkChaos: past the stock cap a bot banks in a zone of its own level and faction, or not at all.
+                // Dalaran took every bot from 71 up, and bots above 80 have no route back to their continent.
+                if (l > STOCK_BANKER_MAX_LEVEL)
+                {
+                    BankerLocation zoneLoc = bLoc;
+                    zoneLoc.forHorde = servesZoneLevel(TEAM_HORDE, l);
+                    zoneLoc.forAlliance = servesZoneLevel(TEAM_ALLIANCE, l);
+                    if (!zoneLoc.forHorde && !zoneLoc.forAlliance)
+                        continue;
+
+                    bankerLocsPerLevelCache[(uint8)l].push_back(zoneLoc);
+                    ++zoneBankerSlots;
+                    continue;
+                }
+
                 // Bots 1-60 go to base game bankers (all have minlevel 30 or 45)
                 if (l <=60 && level > 45)
                     continue;
@@ -5051,7 +5081,7 @@ void TravelMgr::PrepareDestinationCache()
                 if ((l >=61 && l <=70) && (level < 60 || level > 70))
                     continue;
 
-                // Bots 71+ go to Dalaran bankers (all have minlevel 75)
+                // Bots 71-80 go to Dalaran bankers (all have minlevel 75)
                 if ((l >=71) && level != 75)
                     continue;
 
@@ -5188,6 +5218,8 @@ void TravelMgr::PrepareDestinationCache()
     }
 
     LOG_INFO("playerbots", ">> {} flight masters and {} innkeepers and {} banker locations for level collected.", flightMastersCount, innkeepersCount, bankerCount);
+    LOG_INFO("playerbots", ">> {} banker level slots above level {}, in zones of that level.", zoneBankerSlots,
+             STOCK_BANKER_MAX_LEVEL);
 }
 
 void TravelMgr::PrepareQuestGiverTeleportIndex()
