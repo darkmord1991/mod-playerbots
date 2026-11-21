@@ -16,6 +16,7 @@
 #include "Common.h"
 #include "CreatureData.h"
 #include "DBCStores.h"
+#include "DCBotMythicRun.h"
 #include "EmoteAction.h"
 #include "Engine.h"
 #include "EventProcessor.h"
@@ -3491,7 +3492,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
 {
     if (!spellid)
     {
-        if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+        if (ShouldTraceLog())
             LOG_DEBUG("playerbots", "Can cast spell failed. No spellid. - spellid: {}, bot name: {}", spellid, bot->GetName());
 
         return false;
@@ -3499,7 +3500,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
 
     if (bot->HasUnitState(UNIT_STATE_LOST_CONTROL))
     {
-        if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+        if (ShouldTraceLog())
             LOG_DEBUG("playerbots", "Can cast spell failed. Unit state lost control. - spellid: {}, bot name: {}", spellid, bot->GetName());
 
         return false;
@@ -3517,7 +3518,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
 
     if (checkHasSpell && !bot->HasSpell(spellid))
     {
-        if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+        if (ShouldTraceLog())
             LOG_DEBUG("playerbots", "Can cast spell failed. Bot not has spell. - target name: {}, spellid: {}, bot name: {}",
                 target->GetName(), spellid, bot->GetName());
 
@@ -3526,7 +3527,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
 
     if (bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL) != nullptr)
     {
-        if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+        if (ShouldTraceLog())
             LOG_DEBUG("playerbots", "CanCastSpell() target name: {}, spellid: {}, bot name: {}, failed because has current channeled spell",
                 target->GetName(), spellid, bot->GetName());
 
@@ -3535,7 +3536,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
 
     if (bot->HasSpellCooldown(spellid))
     {
-        if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+        if (ShouldTraceLog())
             LOG_DEBUG("playerbots", "Can cast spell failed. Spell not has cooldown. - target name: {}, spellid: {}, bot name: {}",
                 target->GetName(), spellid, bot->GetName());
 
@@ -3545,7 +3546,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellid);
     if (!spellInfo)
     {
-        if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+        if (ShouldTraceLog())
             LOG_DEBUG("playerbots", "Can cast spell failed. No spellInfo. - target name: {}, spellid: {}, bot name: {}",
                 target->GetName(), spellid, bot->GetName());
 
@@ -3554,7 +3555,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
 
     if ((bot->GetShapeshiftForm() == FORM_FLIGHT || bot->GetShapeshiftForm() == FORM_FLIGHT_EPIC) && !bot->IsInCombat())
     {
-        if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+        if (ShouldTraceLog())
             LOG_DEBUG("playerbots", "Can cast spell failed. In flight form (not in combat). - target name: {}, spellid: {}, bot name: {}",
                 target->GetName(), spellid, bot->GetName());
 
@@ -3565,7 +3566,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
     // bool interruptOnMove = spellInfo->InterruptFlags & SPELL_INTERRUPT_FLAG_MOVEMENT;
     if ((CastingTime || spellInfo->IsAutoRepeatRangedSpell()) && bot->isMoving())
     {
-        if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+        if (ShouldTraceLog())
             LOG_DEBUG("playerbots", "Casting time and bot is moving - target name: {}, spellid: {}, bot name: {}",
                 target->GetName(), spellid, bot->GetName());
 
@@ -3579,7 +3580,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
         {
             if (spellid != 44572)  // Deep Freeze
             {
-                if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+                if (ShouldTraceLog())
                     LOG_DEBUG("playerbots", "target is immuned to spell - target name: {}, spellid: {}, bot name: {}",
                         target->GetName(), spellid, bot->GetName());
 
@@ -3590,7 +3591,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
 
         if (bot != target && ServerFacade::instance().GetDistance2d(bot, target) > sPlayerbotAIConfig.SightDistance)
         {
-            if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+            if (ShouldTraceLog())
                 LOG_DEBUG("playerbots", "target is out of sight distance - target name: {}, spellid: {}, bot name: {}",
                     target->GetName(), spellid, bot->GetName());
 
@@ -3635,7 +3636,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
         case SPELL_FAILED_OUT_OF_RANGE:
             return true;
         default:
-            if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
+            if (ShouldTraceLog())
                 LOG_DEBUG("playerbots", "CanCastSpell Check Failed. - target name: {}, spellid: {}, bot name: {}, result: {}",
                     target->GetName(), spellid, bot->GetName(), result);
 
@@ -4706,6 +4707,19 @@ bool PlayerbotAI::IsAltBot() { return HasGameClientMaster() && !sRandomPlayerbot
 
 // True when the bot's master is driven by a player with a game client: a regular player (no bot AI) or a SelfBot player.
 bool PlayerbotAI::HasGameClientMaster() { return IsRealPlayer(master) || IsSelfBot(master); }
+
+bool PlayerbotAI::ShouldTraceLog()
+{
+    if (!sPlayerbotAIConfig.LogInGroupOnly)
+        return true;
+
+    if (!bot->GetGroup() || !HasGameClientMaster())
+        return false;
+
+    // DarkChaos: a bot run's members have mod-dungeon-clear's driver as master, which counts as a
+    // game client although nobody plays it.
+    return !DCBotMythicRun::IsManaged(bot->GetGUID());
+}
 
 Player* PlayerbotAI::GetGroupLeader()
 {

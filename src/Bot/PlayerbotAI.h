@@ -578,6 +578,8 @@ public:
     // Checks if the bot is summoned an altbot of a player
     bool IsAltBot();
     bool HasGameClientMaster();
+    // Playerbots.LogInGroupOnly: trace a bot only while a player has it in a group.
+    bool ShouldTraceLog();
     Player* GetGroupLeader();
     uint32 GetFixedBotNumber(uint32 maxNum = 100);
     GrouperType GetGrouperType();

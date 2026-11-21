@@ -10,6 +10,7 @@
 
 #include "RandomBotLevelMgr.h"
 #include "ArenaTeamMgr.h"
+#include "DCBotMythicRun.h"
 #include "DatabaseEnv.h"
 #include "LFGMgr.h"
 #include "Log.h"
@@ -95,6 +96,12 @@ static bool IsBotSafeForLevelReset(Player* bot)
     }
 
     if (bot->IsInFlight())
+        return false;
+
+    // DarkChaos: a bot in a bot dungeon run keeps its level, gear and talents until the run hands
+    // it back. Its group holds only bots, so the check below lets a re-roll through in any quiet
+    // moment of the run - on 2026-11-19 it took the tank of a Violet Hold run between two waves.
+    if (DCBotMythicRun::IsManaged(bot->GetGUID()))
         return false;
 
     if (Group* group = bot->GetGroup())
@@ -888,6 +895,10 @@ void RandomBotLevelMgr::RunResetPlayedTimeCheck()
         if (IsNameInExcludeList(candidate, sPlayerbotAIConfig.ResetBotLevelExcludeNames))
             continue;
 
+        // DarkChaos: not in the middle of a bot dungeon run; a later check picks it up.
+        if (DCBotMythicRun::IsManaged(candidate->GetGUID()))
+            continue;
+
         PlayerbotAI* botAI = GET_PLAYERBOT_AI(candidate);
         if (sPlayerbotAIConfig.ResetBotLevelIgnoreGuildWithRealPlayers && botAI && botAI->IsInRealGuild())
             continue;
@@ -1018,6 +1029,10 @@ void RandomBotLevelMgr::OnBotLevelChanged(Player* player, uint8 oldLevel)
 
     // Only react to a natural level up.
     if (player->GetLevel() != oldLevel + 1)
+        return;
+
+    // DarkChaos: a bot that levels up during a bot dungeon run keeps playing it.
+    if (DCBotMythicRun::IsManaged(player->GetGUID()))
         return;
 
     if (IsNameInExcludeList(player, sPlayerbotAIConfig.ResetBotLevelExcludeNames))

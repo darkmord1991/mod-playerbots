@@ -635,7 +635,7 @@ bool Engine::ListenAndExecute(Action* action, Event event)
 void Engine::LogAction(char const* format, ...)
 {
     Player* bot = botAI->GetBot();
-    if (sPlayerbotAIConfig.LogInGroupOnly && (!bot->GetGroup() || !botAI->HasGameClientMaster()) && !testMode)
+    if (!testMode && !botAI->ShouldTraceLog())
         return;
 
     char buf[1024];
@@ -708,7 +708,7 @@ void Engine::LogValues()
         return;
 
     Player* bot = botAI->GetBot();
-    if (sPlayerbotAIConfig.LogInGroupOnly && (!bot->GetGroup() || !botAI->HasGameClientMaster()))
+    if (!botAI->ShouldTraceLog())
         return;
 
     std::string const text = botAI->GetAiObjectContext()->FormatValues();

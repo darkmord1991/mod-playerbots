@@ -17,6 +17,7 @@
 #include "Common.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
+#include "DCBotMythicRun.h"  // DarkChaos
 #include "DCHinterlandTactics.h"  // DarkChaos
 #include "DatabaseEnv.h"
 #include "Define.h"
@@ -1770,6 +1771,13 @@ bool RandomPlayerbotMgr::ProcessBot(Player* bot)
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)
+        return false;
+
+    // DarkChaos: a bot in a bot dungeon run belongs to the run until it hands the bot back. The run's
+    // group is led by a random bot, so the leave-group rule below would break it up, and the
+    // re-rolls, teleports and revives further down would pull a member out of the instance. Reached
+    // through the "random bot update" action, which no real player nearby ever holds off in there.
+    if (DCBotMythicRun::IsManaged(bot->GetGUID()))
         return false;
 
     if (bot->InBattleground())
