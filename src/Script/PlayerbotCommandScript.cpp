@@ -50,6 +50,7 @@ public:
         // a keystone. stop and status cover every bot run, keyed or not.
         static ChatCommandTable playerbotsDungeonCommandTable = {
             {"start", HandleDungeonStartCommand, SEC_GAMEMASTER, Console::Yes},
+            {"auto", HandleDungeonAutoCommand, SEC_GAMEMASTER, Console::Yes},
             {"stop", HandleMythicStopCommand, SEC_GAMEMASTER, Console::Yes},
             {"status", HandleMythicStatusCommand, SEC_GAMEMASTER, Console::Yes},
         };
@@ -262,11 +263,18 @@ public:
         return DCBotMythicRun::HandleStartCommand(handler, args);
     }
 
-    // `.playerbots dungeon start [mapId] [normal|heroic]` does the same without a
-    // keystone.
+    // `.playerbots dungeon start [token|mapId] [normal|heroic|mythic]` does the
+    // same without a keystone.
     static bool HandleDungeonStartCommand(ChatHandler* handler, char const* args)
     {
         return DCBotMythicRun::HandleDungeonStartCommand(handler, args);
+    }
+
+    // `.playerbots dungeon auto [now|on|off]`: the automatic runs' state, one
+    // attempt right away, or switching them until the next config reload.
+    static bool HandleDungeonAutoCommand(ChatHandler* handler, char const* args)
+    {
+        return DCBotMythicRun::HandleAutoCommand(handler, args);
     }
 
     static bool HandleMythicStopCommand(ChatHandler* handler, char const* args)

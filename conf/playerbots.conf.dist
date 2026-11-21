@@ -3250,57 +3250,153 @@ Playerbots.DCHinterland.Chatter.SayChance = 15
 Playerbots.DCHinterland.Chatter.EmoteChance = 35
 
 ###############################################################################
-# DARK CHAOS - BOT DUNGEON AND MYTHIC+ RUNS
+# DARK CHAOS - BOT DUNGEON, RAID AND MYTHIC+ RUNS
 #
-# Two GM commands recruit five idle random bots of one faction - a tank, a
-# healer and three damage dealers, none with a lockout on the dungeon - put
-# them in a group led by the tank, send the tank into a fresh instance and the
-# others after it:
+# A bot run recruits idle random bots of one faction - a tank, a healer and
+# three damage dealers, or a raid's worth - none with a lockout on the dungeon
+# and all able to enter it (level, keys, the hourly instance limit). It groups
+# them under the tank, sets the difficulty and sends the tank into a fresh
+# instance and the others after it. When the run is over, or a watchdog gives
+# up on it, the group is disbanded and every bot goes back to where it was
+# recruited.
 #
-# `.playerbots mplus start [mapId] [keystoneLevel]` sets Mythic difficulty and
-# starts a keystone run with no keystone item and no ready check. The run
-# counts and pays out like any other (records, best times, tokens, loot,
-# keystone upgrade); the Group Finder's Spectate tab lists it with the leader
-# shown as "BOT <name>".
+# mod-dungeon-clear leads the group when it is loaded (UseDungeonClear): it
+# walks from boss to boss, pulls the trash on the way, runs the scripted events
+# and resurrects between fights. Its `.dc test` driver character owns the runs:
+# the first run creates and logs in DungeonClear.TestRun.DriverCharacter on
+# DungeonClear.TestRun.DriverAccount if they do not exist yet. Without the
+# module the tank leads through "dc mythic" (PullRange, RegroupDistance,
+# RestHealthPct, RestManaPct below).
 #
-# `.playerbots dungeon start [mapId] [normal|heroic]` runs the dungeon at that
-# difficulty without a keystone. The bosses are the dungeon's encounters
-# (instance_encounters), so a map needs creature-credited rows for the chosen
-# difficulty. Once every encounter is done the bots get 30 seconds to loot.
-# The Spectate tab lists it under Dungeons (tagged NM/HC, leader "BOT <name>").
+# Runs start three ways:
+#   - automatically (AutoRuns): every AutoIntervalSeconds, while a run slot is
+#     free, a dungeon that enough idle bots fit by level and faction is picked
+#     at random by the weights below.
+#   - `.playerbots dungeon start [token|mapId] [normal|heroic|mythic]`
+#   - `.playerbots mplus start [mapId] [keystoneLevel]` starts a keystone with
+#     no keystone item and no ready check. It counts and pays out like any
+#     other run (records, best times, tokens, loot, keystone upgrade).
+# `.playerbots dungeon status` shows the runs, `.playerbots dungeon auto
+# [now|on|off]` the automatic runs, and `stop` ends every bot run. The
+# Group Finder's Spectate tab lists five-player runs with the leader shown as
+# "BOT <name>".
 #
-# Inside, the tank waits until everyone is alive, close and rested, pulls the
-# nearest hostile it can see within PullRange, and otherwise walks toward the
-# next boss the run still needs. The others follow the tank and fight through
-# their ordinary assist and heal strategies. When the run is over, or a
-# watchdog gives up on it, the group is disbanded and every bot is sent back to
-# where it was recruited. `.playerbots mplus status` / `.playerbots dungeon
-# status` show progress and `stop` ends every bot run.
-#
-# Each bot entering counts toward the core's 5-instances-per-hour limit, so
-# repeated test runs can run out of eligible bots for an hour.
+# Each bot entering counts toward the core's 5-instances-per-hour limit.
 ###############################################################################
 
 Playerbots.DCMythicBots.Enable = 1
 
-# Comma-separated map ids a bot run - keyed or not - may be started on. The
-# first is the default for both start commands. 574 = Utgarde Keep.
-Playerbots.DCMythicBots.Dungeons = 574
+# Runs at the same time, started by hand or automatically.
+Playerbots.DCMythicBots.MaxConcurrentRuns = 2
 
-Playerbots.DCMythicBots.MaxConcurrentRuns = 1
-Playerbots.DCMythicBots.BotLevel = 80
+# Let mod-dungeon-clear lead the runs when it is loaded (DungeonClear.Enable).
+# 0 keeps the "dc mythic" lead for every run and turns automatic runs off.
+Playerbots.DCMythicBots.UseDungeonClear = 1
 
-# `.playerbots mplus start` only.
+# --- Automatic runs ---
+
+Playerbots.DCMythicBots.AutoRuns = 1
+Playerbots.DCMythicBots.AutoIntervalSeconds = 120
+
+# Which dungeons: comma-separated mod-dungeon-clear tokens (uk, sm-lib,
+# brd-db, ... - `.dc test list`) or map ids. Empty AutoDungeons takes every
+# dungeon in that catalogue; AutoExcludeDungeons takes some out again.
+Playerbots.DCMythicBots.AutoDungeons = ""
+Playerbots.DCMythicBots.AutoExcludeDungeons = ""
+
+# DarkChaos dungeons outside that catalogue, as map ids. They enter at their
+# entrance area trigger and take their levels from dungeon_access_template and
+# dc_dungeon_mythic_profile.
+Playerbots.DCMythicBots.AutoExtraDungeons = "820,823"
+
+# Bot levels a dungeon takes, around its content level: the catalogue's
+# recommended level for Normal, dc_dungeon_mythic_profile's levels for Heroic
+# and Mythic (the catalogue's for the native TBC and WotLK heroics), and never
+# below dungeon_access_template's minimum. A bot this far below or above fits.
+Playerbots.DCMythicBots.AutoLevelBelow = 2
+Playerbots.DCMythicBots.AutoLevelAbove = 10
+
+# How often each kind of run is picked, relative to the others, among the
+# dungeons enough idle bots fit. 0 never picks it automatically. Keystone runs
+# pay out and enter the leaderboards like a player's.
+Playerbots.DCMythicBots.AutoNormalWeight = 100
+Playerbots.DCMythicBots.AutoHeroicWeight = 60
+Playerbots.DCMythicBots.AutoMythicWeight = 40
+Playerbots.DCMythicBots.AutoKeystoneWeight = 0
+Playerbots.DCMythicBots.AutoKeystoneLevel = 2
+
+# Raids: Molten Core, Blackwing Lair, Gruul's Lair and Karazhan, the raids
+# mod-dungeon-clear has data for. The playerbots raid strategies fight the
+# bosses, so Playerbots.ApplyInstanceStrategies must be on. A raid run takes
+# AutoRaidSize bots, at most the raid's own cap: 2 tanks and 3 healers up to
+# 10, 3 and 6 up to 25, 4 and 10 above.
+Playerbots.DCMythicBots.AutoRaids = 0
+Playerbots.DCMythicBots.AutoRaidWeight = 20
+Playerbots.DCMythicBots.AutoRaidSize = 10
+
+# --- Watchdogs for runs mod-dungeon-clear leads ---
+
+# Give up when nobody fights, no boss dies and the tank does not move for this
+# many seconds, or once the run has taken this many minutes. 0 = off.
+Playerbots.DCMythicBots.ClearNoProgressSeconds = 600
+Playerbots.DCMythicBots.ClearMaxRunMinutes = 120
+
+# Per-map replacements for ClearMaxRunMinutes, as "mapId:minutes" pairs
+# separated by commas, for dungeons too long for it. Example: "349:120"
+# gives full Maraudon two hours. 0 minutes = no limit on that map.
+Playerbots.DCMythicBots.ClearMaxRunMinutesByMap = ""
+
+# A paused clear waits for a player. After this many seconds it is resumed;
+# one paused at a door that never opened skips the boss behind it first.
+Playerbots.DCMythicBots.ClearPauseGraceSeconds = 60
+
+# A clear that reports itself stuck this long skips its current objective, at
+# most ClearMaxSkips times per run (door and ClearTargetMinutes skips count too).
+Playerbots.DCMythicBots.ClearStallGraceSeconds = 120
+Playerbots.DCMythicBots.ClearMaxSkips = 3
+
+# A clear that reaches no boss or objective it has not had before for this many
+# minutes skips the one it is on; if it is still on it a minute later, the run
+# ends. Unlike ClearNoProgressSeconds, fights and walking the same ground again
+# do not count as progress here: a route that keeps ending short of its target
+# never stalls. The tank reaching a 40-yard square of the dungeon it has not
+# stood in since the target began does count, so a long wing with one boss (the
+# Armory) is not cut while it clears its way down. 0 = off.
+Playerbots.DCMythicBots.ClearTargetMinutes = 20
+
+# A clear that stopped before the dungeon was done (a wipe without a
+# resurrector, a member that left) starts again once everyone is back up,
+# inside and out of combat, at most this many times.
+Playerbots.DCMythicBots.ClearMaxRestarts = 3
+
+# --- Every run ---
+
+# `.playerbots mplus start` only; also caps AutoKeystoneLevel.
 Playerbots.DCMythicBots.MaxKeystoneLevel = 10
 
 # Seconds the tank, and then the rest of the group, may take to arrive.
 Playerbots.DCMythicBots.EnterTimeoutSeconds = 90
 
-# Pause after everyone arrived before the keystone starts or the tank moves off.
+# Pause after everyone arrived before the keystone starts or the run moves off.
 Playerbots.DCMythicBots.StartDelaySeconds = 3
 
-# Watchdog: give up when nobody fights, no boss dies and the tank does not move
-# for this many seconds, or when the timer has run this many minutes. 0 = off.
+# Once nobody has fought for 10 seconds, revive dead bots beside the tank and
+# bring back members that ended up outside the instance. A keystone run led by
+# "dc mythic" keeps its own death rules. With 0 a death usually ends the run
+# through a watchdog.
+Playerbots.DCMythicBots.ReviveDeadBots = 1
+
+# --- Runs without mod-dungeon-clear ("dc mythic") ---
+
+# Map ids such a run may be started on, keyed or not. The first is the default
+# for both start commands. 574 = Utgarde Keep.
+Playerbots.DCMythicBots.Dungeons = 574
+
+# Lowest level of the bots such a run recruits.
+Playerbots.DCMythicBots.BotLevel = 80
+
+# Give up when nobody fights, no boss dies and the tank does not move for this
+# many seconds, or when the timer has run this many minutes. 0 = off.
 Playerbots.DCMythicBots.StuckSeconds = 180
 Playerbots.DCMythicBots.MaxRunMinutes = 45
 
@@ -3312,13 +3408,6 @@ Playerbots.DCMythicBots.PullRange = 30
 Playerbots.DCMythicBots.RegroupDistance = 40
 Playerbots.DCMythicBots.RestHealthPct = 60
 Playerbots.DCMythicBots.RestManaPct = 50
-
-# `.playerbots dungeon start` only (a keystone run has its own death rules).
-# Once nobody has fought for 10 seconds, revive dead bots beside the tank and
-# bring back members that ended up outside the instance (released to the
-# graveyard, revived at a spirit healer). With 0 a death usually ends the run
-# through the StuckSeconds watchdog.
-Playerbots.DCMythicBots.ReviveDeadBots = 1
 
 # Great Vault for random bots. A random bot with a successful Mythic+ run in
 # last week (the vault's claim week) builds its vault and claims the reward that

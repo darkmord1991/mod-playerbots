@@ -673,15 +673,16 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
     else
         nonCombatEngine->ChangeStrategy(sPlayerbotAIConfig.NonCombatStrategies);
 
-    // DarkChaos: a bot-only Mythic+ run (DCBotMythicRun.h). The tank leads the
-    // group through "dc mythic", and nothing that would pull a bot out of the
-    // instance or the group may run beside it: grinding and rpg travel, queueing
-    // for battlegrounds or LFG, and duels (accepting one resets strategies).
-    // Decided here rather than with ChangeStrategy so every strategy reset
-    // rebuilds the same set.
+    // DarkChaos: a bot-only dungeon run (DCBotMythicRun.h). mod-dungeon-clear
+    // leads it, or else the tank through "dc mythic"; either way nothing that
+    // would pull a bot out of the instance or the group may run beside it:
+    // grinding and rpg travel, queueing for battlegrounds or LFG, and duels
+    // (accepting one resets strategies). Decided here rather than with
+    // ChangeStrategy so every strategy reset rebuilds the same set.
     if (DCBotMythicRun::IsManaged(player->GetGUID()))
     {
-        nonCombatEngine->addStrategy("dc mythic", false);
+        if (DCBotMythicRun::UsesOwnLead(player->GetGUID()))
+            nonCombatEngine->addStrategy("dc mythic", false);
         for (char const* name : { "grind", "new rpg", "rpg", "move random", "travel", "bg", "lfg", "start duel",
                  "duel", "quest", "gather" })
             nonCombatEngine->removeStrategy(name, false);
