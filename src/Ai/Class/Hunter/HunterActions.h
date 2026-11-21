@@ -10,6 +10,8 @@
 #include "AiObject.h"
 #include "Event.h"
 #include "GenericSpellActions.h"
+#include "Player.h"
+#include "SpellMgr.h"
 #include "Unit.h"
 
 class PlayerbotAI;
@@ -387,84 +389,77 @@ public:
         : CastDebuffSpellAction(botAI, "explosive shot", true, 0.0f) {}
 };
 
-// Rank 4
-class CastExplosiveShotRank4Action : public CastExplosiveShotBaseAction
+// DarkChaos: the Lock and Load weave alternates the highest ranks the bot knows, so that their effects run side
+// by side. Up to level 80 those are the stock ranks 4, 3, 2 and 1, the ids these actions used to name; above it
+// the bot knows higher ranks and the stock ones did a fraction of their damage.
+inline constexpr uint32 EXPLOSIVE_SHOT_RANK_1 = 53301;
+
+class CastExplosiveShotWeaveAction : public CastExplosiveShotBaseAction
 {
 public:
-    CastExplosiveShotRank4Action(PlayerbotAI* botAI) :
-        CastExplosiveShotBaseAction(botAI) {}
+    CastExplosiveShotWeaveAction(PlayerbotAI* botAI, uint8 ranksBelowTop)
+        : CastExplosiveShotBaseAction(botAI), ranksBelowTop(ranksBelowTop)
+    {
+    }
+
     bool Execute(Event /*event*/) override
     {
-        return botAI->CastSpell(60053, GetTarget());
+        uint32 const spellId = GetWeaveSpellId();
+        return spellId && botAI->CastSpell(spellId, GetTarget());
     }
+
     bool isUseful() override
     {
         Unit* target = GetTarget();
         if (!target)
             return false;
 
-        return !target->HasAura(60053);
+        uint32 const spellId = GetWeaveSpellId();
+        return spellId && !target->HasAura(spellId);
     }
+
+private:
+    uint32 GetWeaveSpellId() const
+    {
+        uint32 spellId = sSpellMgr->GetLastSpellInChain(EXPLOSIVE_SHOT_RANK_1);
+        while (spellId && !bot->HasSpell(spellId))
+            spellId = sSpellMgr->GetPrevSpellInChain(spellId);
+
+        for (uint8 i = 0; spellId && i < ranksBelowTop; ++i)
+            spellId = sSpellMgr->GetPrevSpellInChain(spellId);
+
+        return spellId;
+    }
+
+    uint8 ranksBelowTop;
 };
 
-// Rank 3
-class CastExplosiveShotRank3Action : public CastExplosiveShotBaseAction
+// Highest known rank (rank 4 for a level 80 bot)
+class CastExplosiveShotRank4Action : public CastExplosiveShotWeaveAction
 {
 public:
-    CastExplosiveShotRank3Action(PlayerbotAI* botAI) :
-        CastExplosiveShotBaseAction(botAI) {}
-    bool Execute(Event /*event*/) override
-    {
-        return botAI->CastSpell(60052, GetTarget());
-    }
-    bool isUseful() override
-    {
-        Unit* target = GetTarget();
-        if (!target)
-            return false;
-
-        return !target->HasAura(60052);
-    }
+    CastExplosiveShotRank4Action(PlayerbotAI* botAI) : CastExplosiveShotWeaveAction(botAI, 0) {}
 };
 
-// Rank 2
-class CastExplosiveShotRank2Action : public CastExplosiveShotBaseAction
+// One rank below the highest
+class CastExplosiveShotRank3Action : public CastExplosiveShotWeaveAction
 {
 public:
-    CastExplosiveShotRank2Action(PlayerbotAI* botAI) :
-        CastExplosiveShotBaseAction(botAI) {}
-    bool Execute(Event /*event*/) override
-    {
-        return botAI->CastSpell(60051, GetTarget());
-    }
-    bool isUseful() override
-    {
-        Unit* target = GetTarget();
-        if (!target)
-            return false;
-
-        return !target->HasAura(60051);
-    }
+    CastExplosiveShotRank3Action(PlayerbotAI* botAI) : CastExplosiveShotWeaveAction(botAI, 1) {}
 };
 
-// Rank 1
-class CastExplosiveShotRank1Action : public CastExplosiveShotBaseAction
+// Two ranks below the highest
+class CastExplosiveShotRank2Action : public CastExplosiveShotWeaveAction
 {
 public:
-    CastExplosiveShotRank1Action(PlayerbotAI* botAI) :
-        CastExplosiveShotBaseAction(botAI) {}
-    bool Execute(Event /*event*/) override
-    {
-        return botAI->CastSpell(53301, GetTarget());
-    }
-    bool isUseful() override
-    {
-        Unit* target = GetTarget();
-        if (!target)
-            return false;
+    CastExplosiveShotRank2Action(PlayerbotAI* botAI) : CastExplosiveShotWeaveAction(botAI, 2) {}
+};
 
-        return !target->HasAura(53301);
-    }
+// Three ranks below the highest
+class CastExplosiveShotRank1Action : public CastExplosiveShotWeaveAction
+{
+public:
+    CastExplosiveShotRank1Action(PlayerbotAI* botAI) : CastExplosiveShotWeaveAction(botAI, 3) {}
 };
 
 // Melee Spells

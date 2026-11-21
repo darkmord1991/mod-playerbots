@@ -187,6 +187,9 @@ public:
         creators["immolation trap"] = &HunterAiObjectContextInternal::immolation_trap;
         creators["explosive trap"] = &HunterAiObjectContextInternal::explosive_trap;
         creators["explosive shot base"] = &HunterAiObjectContextInternal::explosive_shot_base;
+        // DarkChaos: the survival strategy asks for "explosive shot". Without this name the shot was only ever
+        // cast on a Lock and Load proc.
+        creators["explosive shot"] = &HunterAiObjectContextInternal::explosive_shot_base;
         creators["explosive shot rank 4"] = &HunterAiObjectContextInternal::explosive_shot_rank_4;
         creators["explosive shot rank 3"] = &HunterAiObjectContextInternal::explosive_shot_rank_3;
         creators["explosive shot rank 2"] = &HunterAiObjectContextInternal::explosive_shot_rank_2;
