@@ -17,6 +17,8 @@
 #include <unordered_map>
 #include <vector>
 
+class WorldObject;
+
 enum class BotCheatMask : uint32
 {
     none = 0,
@@ -101,6 +103,8 @@ public:
     bool IsInRandomAccountList(uint32 id);
     bool IsInRandomQuestItemList(uint32 id);
     bool IsPvpProhibited(uint32 zoneId, uint32 areaId);
+    bool IsPvpProhibited(WorldObject const* obj);  // DarkChaos: zone/area lists + IsNearContestedGuard
+    bool IsNearContestedGuard(WorldObject const* obj);
     bool IsInPvpProhibitedZone(uint32 id);
     bool IsInPvpProhibitedArea(uint32 id);
 
@@ -400,6 +404,9 @@ public:
     // equipped item's required level trails theirs by DCStaleGearLevelGap. See PlayerbotFactory::RefreshStaleEquipment.
     uint32 DCStaleGearMinLevel;
     uint32 DCStaleGearLevelGap;
+    // No bot PvP within this many yards (+ wander distance) of a contested guard's spawn: hitting a player there
+    // flags the hitter (Unit::SetContestedPvP, also on retaliation) and the guards kill it. 0 = off.
+    uint32 DCContestedGuardRadius;
     int32 HunterWolfPet;
     int32 DefaultPetStance;
     int32 PetChatCommandDebug;

@@ -88,8 +88,7 @@ bool AttackAction::Attack(Unit* target, bool /*with_pet*/ /*true*/)
     // Check if bot OR target is in prohibited zone/area (skip for duels)
     if ((target->IsPlayer() || target->IsPet()) &&
         (!bot->duel || bot->duel->Opponent != target) &&
-        (sPlayerbotAIConfig.IsPvpProhibited(bot->GetZoneId(), bot->GetAreaId()) ||
-        sPlayerbotAIConfig.IsPvpProhibited(target->GetZoneId(), target->GetAreaId())))
+        (sPlayerbotAIConfig.IsPvpProhibited(bot) || sPlayerbotAIConfig.IsPvpProhibited(target)))
     {
         if (verbose)
             botAI->TellError(PlayerbotTextMgr::instance().GetBotTextOrDefault(

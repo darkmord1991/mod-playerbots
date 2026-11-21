@@ -1186,6 +1186,13 @@ Playerbots.AutoUpgradeEquip = 1
 Playerbots.DCStaleGear.MinLevel = 81
 Playerbots.DCStaleGear.LevelGap = 20
 
+# DarkChaos: bots neither start nor return PvP within this many yards (plus the spawn's wander distance) of a
+# contested guard, i.e. a creature whose faction attacks PvP-active players (Light's Hope, Everlook, Booty Bay,
+# Gadgetzan ...). Hitting a player there flags the hitter, and the guards kill it. Works on every map without
+# area ids, which matters on maps 750/751, where a whole zone is one area. 0 turns it off.
+# Default: 50
+Playerbots.DCContestedGuards.Radius = 50
+
 # Enable/disable which (if any) randombots preserve their current equipment and spec during login
 # and periodic randomization (i.e., persistence).
 # Default: 1 (enabled)

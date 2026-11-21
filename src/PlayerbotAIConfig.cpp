@@ -7,7 +7,10 @@
 #include "PlayerbotAIConfig.h"
 #include "BisListMgr.h"
 #include "Config.h"
+#include "DBCStores.h"
 #include "NewRpgInfo.h"
+#include "Object.h"
+#include "ObjectMgr.h"
 #include "PlayerbotDungeonRepository.h"
 #include "PlayerbotFactory.h"
 #include "PlayerbotGuildMgr.h"
@@ -20,6 +23,7 @@
 #include "TravelMgr.h"
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <functional>
 #include <iostream>
 #include <sstream>
@@ -761,6 +765,7 @@ bool PlayerbotAIConfig::Initialize()
     AutoUpgradeEquip = sConfigMgr->GetOption<bool>("Playerbots.AutoUpgradeEquip", true);
     DCStaleGearMinLevel = sConfigMgr->GetOption<uint32>("Playerbots.DCStaleGear.MinLevel", 81);
     DCStaleGearLevelGap = sConfigMgr->GetOption<uint32>("Playerbots.DCStaleGear.LevelGap", 20);
+    DCContestedGuardRadius = sConfigMgr->GetOption<uint32>("Playerbots.DCContestedGuards.Radius", 50);
     HunterWolfPet = sConfigMgr->GetOption<int32>("Playerbots.HunterWolfPet", 0);
     DefaultPetStance = sConfigMgr->GetOption<int32>("Playerbots.DefaultPetStance", 1);
     PetChatCommandDebug = sConfigMgr->GetOption<bool>("Playerbots.PetChatCommandDebug", 0);
@@ -1059,6 +1064,101 @@ bool PlayerbotAIConfig::IsInRandomQuestItemList(uint32 id)
 bool PlayerbotAIConfig::IsPvpProhibited(uint32 zoneId, uint32 areaId)
 {
     return IsInPvpProhibitedZone(zoneId) || IsInPvpProhibitedArea(areaId) || IsInPvpProhibitedZone(areaId);
+}
+
+namespace
+{
+    // Spawn positions of contested guards, per map in square cells; built once on first use, read-only after.
+    constexpr float CONTESTED_GUARD_CELL_SIZE = 128.0f;
+
+    struct ContestedGuardSpot
+    {
+        float x;
+        float y;
+        float z;
+        float reachSq;
+    };
+
+    std::unordered_map<uint64, std::vector<ContestedGuardSpot>> contestedGuardSpots;
+    std::once_flag contestedGuardSpotsBuilt;
+
+    int32 ContestedGuardCell(float coordinate)
+    {
+        return int32(std::floor(coordinate / CONTESTED_GUARD_CELL_SIZE));
+    }
+
+    uint64 ContestedGuardCellKey(uint32 mapId, int32 cellX, int32 cellY)
+    {
+        // cells span about +-134 on a map, so each fits a uint16
+        return (uint64(mapId) << 32) | (uint64(uint16(int16(cellX))) << 16) | uint64(uint16(int16(cellY)));
+    }
+
+    bool IsContestedGuardEntry(uint32 entry)
+    {
+        CreatureTemplate const* creatureTemplate = entry ? sObjectMgr->GetCreatureTemplate(entry) : nullptr;
+        if (!creatureTemplate)
+            return false;
+
+        FactionTemplateEntry const* faction = sFactionTemplateStore.LookupEntry(creatureTemplate->faction);
+        return faction && faction->IsContestedGuardFaction();
+    }
+
+    void BuildContestedGuardSpots(float radius)
+    {
+        uint32 count = 0;
+        for (auto const& spawn : sObjectMgr->GetAllCreatureData())
+        {
+            CreatureData const& data = spawn.second;
+            if (!IsContestedGuardEntry(data.id) && !IsContestedGuardEntry(data.id2) && !IsContestedGuardEntry(data.id3))
+                continue;
+
+            // the 3x3 cell lookup only sees one cell around the query point
+            float const reach = std::min(radius + data.wander_distance, CONTESTED_GUARD_CELL_SIZE);
+            contestedGuardSpots[ContestedGuardCellKey(data.mapid, ContestedGuardCell(data.posX),
+                                                      ContestedGuardCell(data.posY))]
+                .push_back({data.posX, data.posY, data.posZ, reach * reach});
+            ++count;
+        }
+
+        LOG_INFO("playerbots", "Contested guards: {} spawns indexed, no bot PvP within {} yards of them.", count,
+                 uint32(radius));
+    }
+}
+
+bool PlayerbotAIConfig::IsNearContestedGuard(WorldObject const* obj)
+{
+    if (!obj || !DCContestedGuardRadius)
+        return false;
+
+    // battlegrounds and arenas never set the contested flag
+    MapEntry const* mapEntry = sMapStore.LookupEntry(obj->GetMapId());
+    if (!mapEntry || mapEntry->IsBattlegroundOrArena())
+        return false;
+
+    std::call_once(contestedGuardSpotsBuilt, BuildContestedGuardSpots, float(DCContestedGuardRadius));
+
+    int32 const cellX = ContestedGuardCell(obj->GetPositionX());
+    int32 const cellY = ContestedGuardCell(obj->GetPositionY());
+    for (int32 dx = -1; dx <= 1; ++dx)
+    {
+        for (int32 dy = -1; dy <= 1; ++dy)
+        {
+            auto const itr = contestedGuardSpots.find(ContestedGuardCellKey(obj->GetMapId(), cellX + dx, cellY + dy));
+            if (itr == contestedGuardSpots.end())
+                continue;
+
+            for (ContestedGuardSpot const& spot : itr->second)
+                if (obj->GetExactDistSq(spot.x, spot.y, spot.z) <= spot.reachSq)
+                    return true;
+        }
+    }
+
+    return false;
+}
+
+bool PlayerbotAIConfig::IsPvpProhibited(WorldObject const* obj)
+{
+    return obj && (IsPvpProhibited(obj->GetZoneId(), obj->GetAreaId()) || IsNearContestedGuard(obj));
 }
 
 bool PlayerbotAIConfig::IsInPvpProhibitedZone(uint32 id)
