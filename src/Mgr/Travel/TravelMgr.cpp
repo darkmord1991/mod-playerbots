@@ -4516,14 +4516,21 @@ const std::vector<WorldLocation> TravelMgr::GetTeleportLocations(Player* bot)
 
 const std::vector<WorldLocation> TravelMgr::GetTeleportLocations(Player* bot, uint32 level)
 {
-    std::map<uint8, std::vector<WorldLocation>> const& cache =
-        !sPlayerbotAIConfig.EnableNewRpgStrategy ? locsPerLevelCache
-        : bot->GetTeamId() == TEAM_ALLIANCE      ? allianceHubsPerLevelCache
-                                                 : hordeHubsPerLevelCache;
-
     // DarkChaos: not an exact find. The caches stop at the highest zone bracket (80) while bots level far past it;
     // GetLevelCacheEntry reads the highest filled entry at or below the level, and never inserts (map threads).
-    return GetLevelCacheEntry(cache, static_cast<uint8>(std::min<uint32>(level, 255)));
+    uint8 const cacheLevel = static_cast<uint8>(std::min<uint32>(level, 255));
+    if (sPlayerbotAIConfig.EnableNewRpgStrategy)
+        return GetLevelCacheEntry(
+            bot->GetTeamId() == TEAM_ALLIANCE ? allianceHubsPerLevelCache : hordeHubsPerLevelCache, cacheLevel);
+
+    // Every grind spot, whatever its phase: the bot's phase there is only known once it has arrived.
+    std::vector<GrindSpot> const& spots = GetLevelCacheEntry(locsPerLevelCache, cacheLevel);
+    std::vector<WorldLocation> locs;
+    locs.reserve(spots.size());
+    for (GrindSpot const& spot : spots)
+        locs.push_back(spot.loc);
+
+    return locs;
 }
 
 const std::vector<WorldLocation> TravelMgr::GetTravelHubs(Player* bot)
@@ -4895,8 +4902,10 @@ void TravelMgr::PrepareDestinationCache()
         return itr->second;
     };
 
+    // Grind spots: creatures by 50 yd cell and phase mask, so a bot sees all of a spot's spawns or none of them (a
+    // quest phase can hold phase-only copies of a whole camp).
+    std::map<std::tuple<uint16, int32, int32, int32, uint32>, std::vector<CreatureData>> tempLocsCache;
     // Temporary map to group creatures by entry and area
-    std::map<std::tuple<uint16, int32, int32, int32>, std::vector<CreatureData>> tempLocsCache;
     std::map<uint32, std::map<uint32, std::vector<WorldLocation>>> tempCreatureCache;
     for (auto const& [guid, creatureData] : sObjectMgr->GetAllCreatureData())
     {
@@ -4962,7 +4971,8 @@ void TravelMgr::PrepareDestinationCache()
             int32 roundX = static_cast<int32>(std::lround(x / 50.0f));
             int32 roundY = static_cast<int32>(std::lround(y / 50.0f));
             int32 roundZ = static_cast<int32>(std::lround(z / 50.0f));
-            tempLocsCache[std::make_tuple(mapId, roundX, roundY, roundZ)].push_back(creatureData);
+            tempLocsCache[std::make_tuple(mapId, roundX, roundY, roundZ, creatureData.phaseMask)].push_back(
+                creatureData);
             tempCreatureCache[templateEntry][areaId].push_back(WorldLocation(mapId, x, y, z));
         }
         // FLIGHT MASTERS
@@ -5147,14 +5157,14 @@ void TravelMgr::PrepareDestinationCache()
                 spawns.emplace_back(std::get<0>(gridTuple), creatureData.posX, creatureData.posY, creatureData.posZ);
 
             // A real spawn, not the grid key * 50, which can be up to 25 yd in the air or underground.
-            WorldLocation const loc = WorldPosition(spawns, WP_MEAN_CENTROID);
+            GrindSpot const spot{WorldPosition(spawns, WP_MEAN_CENTROID), std::get<4>(gridTuple)};
             for (int32 l = (int32)level - (int32)sPlayerbotAIConfig.RandomBotTeleLowerLevel;
                  l <= (int32)level + (int32)sPlayerbotAIConfig.RandomBotTeleHigherLevel; l++)
             {
                 if (l < 1 || l > int32(maxLevel))
                     continue;
 
-                locsPerLevelCache[(uint8)l].push_back(loc);
+                locsPerLevelCache[(uint8)l].push_back(spot);
             }
         }
     }

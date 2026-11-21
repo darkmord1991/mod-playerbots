@@ -112,6 +112,8 @@ protected:
     bool PickUpQuest(NewRpgInfo::DoQuest& data);
 
     const uint32 poiStayTime = 5 * MINUTE * IN_MILLISECONDS;
+    // DarkChaos: an exploration trigger the bot stands in is reported to the core at most this often.
+    const uint32 exploreReportGap = 5 * IN_MILLISECONDS;
     // How long a bot waits at a quest giver for the quest before giving up on it.
     const uint32 pickUpStayTime = 30 * IN_MILLISECONDS;
 };

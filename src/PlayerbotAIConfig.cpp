@@ -818,6 +818,7 @@ bool PlayerbotAIConfig::Initialize()
     DCSkipQuests.clear();
     LoadList<std::vector<uint32>>(sConfigMgr->GetOption<std::string>("Playerbots.DCLevelAreas.SkipQuests", ""),
                                   DCSkipQuests);
+    std::sort(DCSkipQuests.begin(), DCSkipQuests.end());  // DCQuestSpawnIndex::IsSkipped searches by halving
     DCQuestStatsDumpMinutes = sConfigMgr->GetOption<uint32>("Playerbots.DCQuestStats.DumpMinutes", 0);
     DeathKnightStartLevel = sConfigMgr->GetOption<uint32>("Playerbots.DeathKnightStartLevel", 55);
 

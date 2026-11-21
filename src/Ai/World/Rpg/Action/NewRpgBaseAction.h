@@ -101,6 +101,14 @@ protected:
     const uint32 questGiverGiveUpTime = 60 * IN_MILLISECONDS;
     // A longer pause (combat, eating) starts the timer over.
     const uint32 questGiverRetryGap = 5 * IN_MILLISECONDS;
+    // DarkChaos: a log that stayed full after a clean-up is not walked again sooner than this.
+    const uint32 questLogOrganizeGap = 30 * IN_MILLISECONDS;
+    // A turn-in spawn this close (2D) to a turn-in point is where the bot goes, at the spawn's height.
+    const float turnInSpawnRadius = 60.0f;
+    // An objective target spawn this close (2D) to an objective point, standing more than objectiveHeightGap off
+    // the ground height there (in a cave or on a platform), is where the bot goes instead.
+    const float objectiveSpawnRadius = 80.0f;
+    const float objectiveHeightGap = 8.0f;
 };
 
 #endif

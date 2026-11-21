@@ -24,7 +24,29 @@
 
 namespace
 {
-using SpawnPositions = std::unordered_map<uint32, std::vector<WorldPosition>>;
+// A spawn and the phases it is in (CreatureData / GameObjectData::phaseMask).
+struct Spawn
+{
+    WorldPosition pos;
+    uint32 phaseMask;
+};
+
+using SpawnList = std::vector<Spawn>;
+using SpawnPositions = std::unordered_map<uint32, SpawnList>;  // entry -> spawns
+
+// The rule of the header: phase 1, or a phase the bot is in.
+bool IsInSight(Spawn const& spawn, uint32 phaseMask) { return (spawn.phaseMask & (phaseMask | PHASEMASK_NORMAL)) != 0; }
+
+std::vector<WorldPosition> InSight(SpawnList const& spawns, uint32 phaseMask)
+{
+    std::vector<WorldPosition> positions;
+    positions.reserve(spawns.size());
+    for (Spawn const& spawn : spawns)
+        if (IsInSight(spawn, phaseMask))
+            positions.push_back(spawn.pos);
+
+    return positions;
+}
 
 // Quest items each indexed map can give: the loot, skinning and pickpocket tables of its creature spawns and the
 // loot of its chests and fishing holes, one reference level deep. ItemSources holds the items, ItemDroppers the
@@ -73,6 +95,41 @@ std::string GameObjectItemQuery(uint32 mapId)
         mapId, mapId);
 }
 
+// Rows of (item, creature entry) over every creature template: loot, skinning and pickpocket, one reference level
+// deep, for the items some quest asks for.
+std::string AllCreatureQuestItemQuery()
+{
+    std::string items;
+    for (uint32 i = 1; i <= QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+        items += Acore::StringFormat("{}SELECT RequiredItemId{} AS Item FROM quest_template WHERE RequiredItemId{} > 0",
+                                     items.empty() ? "" : " UNION ", i, i);
+
+    std::string sql;
+    std::pair<char const*, char const*> const creatureLoot[] = {{"creature_loot_template", "lootid"},
+                                                                {"skinning_loot_template", "skinloot"},
+                                                                {"pickpocketing_loot_template", "pickpocketloot"}};
+    for (auto const& [table, column] : creatureLoot)
+    {
+        sql += Acore::StringFormat(
+            "{}SELECT l.Item, t.entry FROM creature_template t JOIN {} l ON l.Entry = t.{} "
+            "JOIN ({}) q ON q.Item = l.Item WHERE t.{} > 0 AND l.Reference = 0 "
+            "UNION SELECT r.Item, t.entry FROM creature_template t JOIN {} l ON l.Entry = t.{} AND l.Reference > 0 "
+            "JOIN reference_loot_template r ON r.Entry = l.Reference JOIN ({}) q ON q.Item = r.Item WHERE t.{} > 0",
+            sql.empty() ? "" : " UNION ", table, column, items, column, table, column, items, column);
+    }
+    return sql;
+}
+
+// Rows of (item, gameobject entry) over every chest (type 3) and fishing hole (type 25) template.
+std::string AllGameObjectItemQuery()
+{
+    return "SELECT l.Item, t.entry FROM gameobject_template t JOIN gameobject_loot_template l ON l.Entry = t.Data1 "
+           "WHERE t.type IN (3, 25) AND t.Data1 > 0 AND l.Reference = 0 "
+           "UNION SELECT r.Item, t.entry FROM gameobject_template t "
+           "JOIN gameobject_loot_template l ON l.Entry = t.Data1 AND l.Reference > 0 "
+           "JOIN reference_loot_template r ON r.Entry = l.Reference WHERE t.type IN (3, 25) AND t.Data1 > 0";
+}
+
 // The quest is filed under a zone of another map: a battleground, dungeon, raid or a city of another continent.
 // The map the copy was made from (Playerbots.DCLevelAreas.QuestPoiMapAlias) counts as this map.
 bool IsSortedToAnotherMap(Quest const* quest, uint32 mapId, uint32 stockMapId)
@@ -106,23 +163,55 @@ bool NeedsUnobtainableItem(Quest const* quest, std::unordered_set<uint32> const&
 struct QuestSpawns
 {
     bool playable{true};
-    std::vector<WorldPosition> enders;
-    std::array<std::vector<WorldPosition>, QUEST_OBJECTIVES_COUNT> objectives;
+    SpawnList enders;
+    std::array<SpawnList, QUEST_OBJECTIVES_COUNT> objectives;
 };
 
 struct Index
 {
     std::unordered_map<uint32, std::unordered_map<uint32, QuestSpawns>> byMap;
-    // map -> quest item -> spawn positions of the creatures and objects on the map that give it
-    std::unordered_map<uint32, std::unordered_map<uint32, std::vector<WorldPosition>>> itemPositionsByMap;
+    // map -> quest item -> spawns of the creatures and objects on the map that give it
+    std::unordered_map<uint32, std::unordered_map<uint32, SpawnList>> itemPositionsByMap;
 
     void Build();
     void BuildMap(uint32 mapId);
 };
 
-std::vector<WorldPosition> const NoPositions{};
+std::vector<uint32> const NoTriggers{};
 
-void AppendSpawns(std::vector<WorldPosition>& out, SpawnPositions const& spawns, uint32 entry)
+// Every map: where the targets of kill, object and item objectives stand, and the area triggers of exploration
+// objectives.
+struct ObjectiveSpawns
+{
+    SpawnPositions creatures;    // entry -> spawns, for the entries some objective needs
+    SpawnPositions gameObjects;  // likewise
+    std::unordered_map<uint32, std::vector<uint32>> creditedBy;                    // kill credit -> creatures
+    std::unordered_map<uint32, std::vector<std::pair<bool, uint32>>> itemSources;  // item -> (is object, entry)
+    std::unordered_map<uint32, std::vector<uint32>> exploreTriggers;               // quest -> area triggers
+};
+
+// The nearest of `spawns` on the map, in sight of `phaseMask`, within the distance `nearestDistSq` (squared, 2D)
+// of (x, y).
+void KeepNearest(SpawnList const& spawns, uint32 mapId, uint32 phaseMask, float x, float y,
+                 WorldPosition const*& nearest, float& nearestDistSq)
+{
+    for (Spawn const& spawn : spawns)
+    {
+        if (spawn.pos.GetMapId() != mapId || !IsInSight(spawn, phaseMask))
+            continue;
+
+        float const dx = spawn.pos.GetPositionX() - x;
+        float const dy = spawn.pos.GetPositionY() - y;
+        float const distSq = dx * dx + dy * dy;
+        if (distSq <= nearestDistSq)
+        {
+            nearestDistSq = distSq;
+            nearest = &spawn.pos;
+        }
+    }
+}
+
+void AppendSpawns(SpawnList& out, SpawnPositions const& spawns, uint32 entry)
 {
     auto itr = spawns.find(entry);
     if (itr != spawns.end())
@@ -143,16 +232,17 @@ void Index::BuildMap(uint32 mapId)
         if (data.mapid != mapId)
             continue;
 
-        WorldPosition const pos(mapId, data.posX, data.posY, data.posZ, data.orientation);
+        Spawn const spawn{WorldPosition(mapId, data.posX, data.posY, data.posZ, data.orientation), data.phaseMask};
         for (uint32 entry : {data.id, data.id2, data.id3})
             if (entry)
-                creatureSpawns[entry].push_back(pos);
+                creatureSpawns[entry].push_back(spawn);
     }
 
     SpawnPositions goSpawns;
     for (auto const& [spawnId, data] : sObjectMgr->GetAllGOData())
         if (data.mapid == mapId)
-            goSpawns[data.id].push_back(WorldPosition(mapId, data.posX, data.posY, data.posZ, data.orientation));
+            goSpawns[data.id].push_back(
+                {WorldPosition(mapId, data.posX, data.posY, data.posZ, data.orientation), data.phaseMask});
 
     // Killing a creature whose template names a kill credit counts for that entry too. The DC continents rely on
     // this: their clone creatures credit the stock entries the stock quests ask for.
@@ -190,10 +280,10 @@ void Index::BuildMap(uint32 mapId)
     auto const droppers = ItemDroppers.find(mapId);
     if (droppers != ItemDroppers.end())
     {
-        std::unordered_map<uint32, std::vector<WorldPosition>>& itemPositions = itemPositionsByMap[mapId];
+        std::unordered_map<uint32, SpawnList>& itemPositions = itemPositionsByMap[mapId];
         for (auto const& [item, sources] : droppers->second)
         {
-            std::vector<WorldPosition>& positions = itemPositions[item];
+            SpawnList& positions = itemPositions[item];
             for (auto const& [isGameObject, entry] : sources)
                 AppendSpawns(positions, isGameObject ? goSpawns : creatureSpawns, entry);
         }
@@ -231,7 +321,7 @@ void Index::BuildMap(uint32 mapId)
             if (!target)
                 continue;
 
-            std::vector<WorldPosition>& positions = spawns.objectives[i];
+            SpawnList& positions = spawns.objectives[i];
             if (target > 0)
             {
                 AppendSpawns(positions, creatureSpawns, static_cast<uint32>(target));
@@ -290,6 +380,156 @@ Index const& GetIndex()
     return index;
 }
 
+// Spawns of the turn-ins of every quest, on every map.
+std::unordered_map<uint32, SpawnList> BuildEnderSpawns()
+{
+    std::unordered_map<uint32, std::vector<uint32>> creatureQuests;
+    for (auto const& [entry, questId] : *sObjectMgr->GetCreatureQuestInvolvedRelationMap())
+        creatureQuests[entry].push_back(questId);
+    std::unordered_map<uint32, std::vector<uint32>> goQuests;
+    for (auto const& [entry, questId] : *sObjectMgr->GetGOQuestInvolvedRelationMap())
+        goQuests[entry].push_back(questId);
+
+    std::unordered_map<uint32, SpawnList> enders;
+    size_t spawns = 0;
+    auto const add = [&enders, &spawns](std::vector<uint32> const& quests, Spawn const& spawn)
+    {
+        for (uint32 questId : quests)
+        {
+            enders[questId].push_back(spawn);
+            ++spawns;
+        }
+    };
+    for (auto const& [spawnId, data] : sObjectMgr->GetAllCreatureData())
+    {
+        Spawn const spawn{WorldPosition(data.mapid, data.posX, data.posY, data.posZ, data.orientation), data.phaseMask};
+        for (uint32 entry : {data.id, data.id2, data.id3})
+        {
+            auto const quests = entry ? creatureQuests.find(entry) : creatureQuests.end();
+            if (quests != creatureQuests.end())
+                add(quests->second, spawn);
+        }
+    }
+    for (auto const& [spawnId, data] : sObjectMgr->GetAllGOData())
+    {
+        auto const quests = goQuests.find(data.id);
+        if (quests != goQuests.end())
+            add(quests->second,
+                {WorldPosition(data.mapid, data.posX, data.posY, data.posZ, data.orientation), data.phaseMask});
+    }
+
+    LOG_INFO("playerbots", "Quest turn-in spawns: {} quests, {} spawns", enders.size(), spawns);
+    return enders;
+}
+
+// The item sources and exploration triggers come from the world database, so only Init() (world thread, startup)
+// reads them; a build on first use from a map thread leaves them out.
+ObjectiveSpawns BuildObjectiveSpawns(bool withDatabase)
+{
+    ObjectiveSpawns out;
+    std::unordered_set<uint32> creatureEntries;
+    std::unordered_set<uint32> goEntries;
+    std::unordered_set<uint32> questItems;
+    for (auto const& [questId, quest] : sObjectMgr->GetQuestTemplates())
+    {
+        for (uint32 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            int32 const target = quest->RequiredNpcOrGo[i];
+            if (target > 0)
+                creatureEntries.insert(static_cast<uint32>(target));
+            else if (target < 0)
+                goEntries.insert(static_cast<uint32>(-target));
+        }
+        for (uint32 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+            if (quest->RequiredItemId[i])
+                questItems.insert(quest->RequiredItemId[i]);
+    }
+
+    for (auto const& [entry, creatureTemplate] : *sObjectMgr->GetCreatureTemplates())
+        for (uint32 credit : creatureTemplate.KillCredit)
+            if (credit && credit != entry && creatureEntries.count(credit))
+                out.creditedBy[credit].push_back(entry);
+    for (auto const& [credit, sources] : out.creditedBy)
+        creatureEntries.insert(sources.begin(), sources.end());
+
+    if (withDatabase)
+    {
+        for (bool const isGameObject : {false, true})
+        {
+            // sql-ok: table and column names are literals
+            QueryResult result =
+                WorldDatabase.Query(isGameObject ? AllGameObjectItemQuery() : AllCreatureQuestItemQuery());
+            if (!result)
+                continue;
+
+            do
+            {
+                uint32 const item = (*result)[0].Get<uint32>();
+                if (!questItems.count(item))
+                    continue;
+
+                uint32 const entry = (*result)[1].Get<uint32>();
+                out.itemSources[item].emplace_back(isGameObject, entry);
+                (isGameObject ? goEntries : creatureEntries).insert(entry);
+            } while (result->NextRow());
+        }
+
+        if (QueryResult result = WorldDatabase.Query("SELECT id, quest FROM areatrigger_involvedrelation"))
+        {
+            do
+                out.exploreTriggers[(*result)[1].Get<uint32>()].push_back((*result)[0].Get<uint32>());
+            while (result->NextRow());
+        }
+    }
+
+    size_t spawns = 0;
+    for (auto const& [spawnId, data] : sObjectMgr->GetAllCreatureData())
+    {
+        for (uint32 entry : {data.id, data.id2, data.id3})
+        {
+            if (!entry || !creatureEntries.count(entry))
+                continue;
+
+            out.creatures[entry].push_back(
+                {WorldPosition(data.mapid, data.posX, data.posY, data.posZ, data.orientation), data.phaseMask});
+            ++spawns;
+        }
+    }
+    for (auto const& [spawnId, data] : sObjectMgr->GetAllGOData())
+    {
+        if (!goEntries.count(data.id))
+            continue;
+
+        out.gameObjects[data.id].push_back(
+            {WorldPosition(data.mapid, data.posX, data.posY, data.posZ, data.orientation), data.phaseMask});
+        ++spawns;
+    }
+
+    LOG_INFO("playerbots",
+             "Quest objective spawns: {} creature and {} object entries, {} spawns, {} quest items "
+             "with sources, {} quests with exploration triggers",
+             out.creatures.size(), out.gameObjects.size(), spawns, out.itemSources.size(), out.exploreTriggers.size());
+    return out;
+}
+
+bool ObjectiveSpawnsFromInit = false;
+
+ObjectiveSpawns const& GetObjectiveSpawns()
+{
+    static ObjectiveSpawns spawns;
+    static std::once_flag built;
+    std::call_once(built, [] { spawns = BuildObjectiveSpawns(ObjectiveSpawnsFromInit); });
+    return spawns;
+}
+
+std::unordered_map<uint32, SpawnList> const& GetEnderSpawns()
+{
+    static std::unordered_map<uint32, SpawnList> enders;
+    static std::once_flag built;
+    std::call_once(built, [] { enders = BuildEnderSpawns(); });
+    return enders;
+}
+
 QuestSpawns const* FindQuest(uint32 questId, uint32 mapId)
 {
     if (sPlayerbotAIConfig.DCQuestSpawnMaps.empty())
@@ -339,39 +579,116 @@ void DCQuestSpawnIndex::Init()
     }
 
     GetIndex();
+    GetEnderSpawns();
+    ObjectiveSpawnsFromInit = true;
+    GetObjectiveSpawns();
 }
 
-std::vector<WorldPosition> const& DCQuestSpawnIndex::GetItemSourcePositions(uint32 itemId, uint32 mapId)
+std::vector<WorldPosition> DCQuestSpawnIndex::GetItemSourcePositions(uint32 itemId, uint32 mapId, uint32 phaseMask)
 {
     if (sPlayerbotAIConfig.DCQuestSpawnMaps.empty())
-        return NoPositions;
+        return {};
 
     Index const& index = GetIndex();
     auto const map = index.itemPositionsByMap.find(mapId);
     if (map == index.itemPositionsByMap.end())
-        return NoPositions;
+        return {};
 
     auto const item = map->second.find(itemId);
-    return item != map->second.end() ? item->second : NoPositions;
+    return item != map->second.end() ? InSight(item->second, phaseMask) : std::vector<WorldPosition>{};
+}
+
+bool DCQuestSpawnIndex::IsSkipped(uint32 questId)
+{
+    std::vector<uint32> const& skipList = sPlayerbotAIConfig.DCSkipQuests;
+    return std::binary_search(skipList.begin(), skipList.end(), questId);
+}
+
+WorldPosition const* DCQuestSpawnIndex::FindEnderNear(uint32 questId, uint32 mapId, uint32 phaseMask, float x, float y,
+                                                      float radius)
+{
+    std::unordered_map<uint32, SpawnList> const& enders = GetEnderSpawns();
+    auto const quest = enders.find(questId);
+    if (quest == enders.end())
+        return nullptr;
+
+    WorldPosition const* nearest = nullptr;
+    float nearestDistSq = radius * radius;
+    KeepNearest(quest->second, mapId, phaseMask, x, y, nearest, nearestDistSq);
+    return nearest;
+}
+
+WorldPosition const* DCQuestSpawnIndex::FindObjectiveTargetNear(uint32 questId, int32 objectiveIdx, uint32 mapId,
+                                                                uint32 phaseMask, float x, float y, float radius)
+{
+    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+    if (!quest || objectiveIdx < 0 || objectiveIdx >= EXPLORE_OBJECTIVE_IDX)
+        return nullptr;
+
+    ObjectiveSpawns const& spawns = GetObjectiveSpawns();
+    WorldPosition const* nearest = nullptr;
+    float nearestDistSq = radius * radius;
+    auto const consider = [&](SpawnPositions const& positions, uint32 entry)
+    {
+        auto const itr = positions.find(entry);
+        if (itr != positions.end())
+            KeepNearest(itr->second, mapId, phaseMask, x, y, nearest, nearestDistSq);
+    };
+
+    if (objectiveIdx < QUEST_OBJECTIVES_COUNT)
+    {
+        int32 const target = quest->RequiredNpcOrGo[objectiveIdx];
+        if (target > 0)
+        {
+            consider(spawns.creatures, static_cast<uint32>(target));
+            auto const credits = spawns.creditedBy.find(static_cast<uint32>(target));
+            if (credits != spawns.creditedBy.end())
+                for (uint32 source : credits->second)
+                    consider(spawns.creatures, source);
+        }
+        else if (target < 0)
+            consider(spawns.gameObjects, static_cast<uint32>(-target));
+
+        return nearest;
+    }
+
+    uint32 const item = quest->RequiredItemId[objectiveIdx - QUEST_OBJECTIVES_COUNT];
+    auto const sources = item ? spawns.itemSources.find(item) : spawns.itemSources.end();
+    if (sources != spawns.itemSources.end())
+        for (auto const& [isGameObject, entry] : sources->second)
+            consider(isGameObject ? spawns.gameObjects : spawns.creatures, entry);
+
+    return nearest;
+}
+
+std::vector<uint32> const& DCQuestSpawnIndex::GetExploreTriggers(uint32 questId)
+{
+    ObjectiveSpawns const& spawns = GetObjectiveSpawns();
+    auto const itr = spawns.exploreTriggers.find(questId);
+    return itr != spawns.exploreTriggers.end() ? itr->second : NoTriggers;
 }
 
 bool DCQuestSpawnIndex::IsPlayable(uint32 questId, uint32 mapId)
 {
+    if (IsSkipped(questId))
+        return false;
+
     QuestSpawns const* quest = FindQuest(questId, mapId);
     return !quest || quest->playable;
 }
 
-std::vector<WorldPosition> const& DCQuestSpawnIndex::GetEnderPositions(uint32 questId, uint32 mapId)
+std::vector<WorldPosition> DCQuestSpawnIndex::GetEnderPositions(uint32 questId, uint32 mapId, uint32 phaseMask)
 {
     QuestSpawns const* quest = FindQuest(questId, mapId);
-    return quest ? quest->enders : NoPositions;
+    return quest ? InSight(quest->enders, phaseMask) : std::vector<WorldPosition>{};
 }
 
-std::vector<WorldPosition> const& DCQuestSpawnIndex::GetObjectivePositions(uint32 questId, uint32 mapId,
-                                                                           uint32 objectiveIdx)
+std::vector<WorldPosition> DCQuestSpawnIndex::GetObjectivePositions(uint32 questId, uint32 mapId, uint32 objectiveIdx,
+                                                                    uint32 phaseMask)
 {
     QuestSpawns const* quest = FindQuest(questId, mapId);
-    return quest && objectiveIdx < QUEST_OBJECTIVES_COUNT ? quest->objectives[objectiveIdx] : NoPositions;
+    return quest && objectiveIdx < QUEST_OBJECTIVES_COUNT ? InSight(quest->objectives[objectiveIdx], phaseMask)
+                                                          : std::vector<WorldPosition>{};
 }
 
 std::vector<std::pair<uint32, uint32>> DCQuestSpawnIndex::GetUnplayable()

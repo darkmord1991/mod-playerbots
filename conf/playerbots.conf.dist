@@ -1752,8 +1752,9 @@ Playerbots.DCLevelAreas.MapBotCaps = "750:500,751:500,861:150"
 # Default: 750,751,861
 Playerbots.DCLevelAreas.QuestSpawnMaps = "750,751,861"
 
-# DCLevelAreas.SkipQuests: quest ids given on the QuestSpawnMaps that bots never take, for quests whose
-# mechanics a bot cannot do (scripted events, single elite bosses, credit from using an item). The quest
+# DCLevelAreas.SkipQuests: quest ids bots never take, and drop or ignore when they already carry them, on
+# every map. For quests whose mechanics a bot cannot do (scripted events, single elite bosses, credit from
+# using an item or a gossip choice); players are not affected. The quest
 # stats dump (DCQuestStats.DumpMinutes) shows candidates: many accepts, almost no completions, and
 # abandons for no_progress. Empty = none.
 # Default: "" (the DarkChaos live conf lists 13509,13529,13560,14131,14464,24467,27477,27487)

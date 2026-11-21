@@ -9,6 +9,7 @@
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
 #include "DBCStores.h"
+#include "DCQuestSpawnIndex.h"
 #include "GossipDef.h"
 #include "IVMapMgr.h"
 #include "MotionMaster.h"
@@ -542,6 +543,8 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
                 quest->RequiredItemCount[currentObjective - QUEST_OBJECTIVES_COUNT])
                 completed = false;
         }
+        else if (currentObjective == DCQuestSpawnIndex::EXPLORE_OBJECTIVE_IDX && !q_status.Explored)
+            completed = false;
         // the current objective is completed, clear and find a new objective later
         if (completed)
         {
@@ -575,10 +578,46 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
             return false;
 
+        // DarkChaos: that height is the top surface. When the targets near the point stand in a cave or a mine
+        // below it (or on a platform above), the bot never fights them: it only attacks within 5 yd of its own
+        // height. Go to the nearest target spawn then.
+        if (!poiInfo[rndIdx].z)
+        {
+            WorldPosition const* target = DCQuestSpawnIndex::FindObjectiveTargetNear(
+                questId, objectiveIdx, bot->GetMapId(), bot->GetPhaseMask(), dx, dy, objectiveSpawnRadius);
+            if (target && std::fabs(target->GetPositionZ() - dz) > objectiveHeightGap)
+            {
+                dx = target->GetPositionX();
+                dy = target->GetPositionY();
+                dz = target->GetPositionZ();
+            }
+        }
+
         WorldPosition pos(bot->GetMapId(), dx, dy, dz);
         data.lastReachPOI = 0;
         data.pos = pos;
         data.objectiveIdx = objectiveIdx;
+    }
+
+    // DarkChaos: a client reports entering an area trigger; a bot has none, so its exploration objective is
+    // reported here, through the same handler. At most every few seconds: the trigger may also run a script.
+    bool const exploring = data.objectiveIdx == DCQuestSpawnIndex::EXPLORE_OBJECTIVE_IDX;
+    if (exploring && bot->IsAlive() &&
+        (!data.exploreReportedAt || GetMSTimeDiffToNow(data.exploreReportedAt) >= exploreReportGap))
+    {
+        for (uint32 triggerId : DCQuestSpawnIndex::GetExploreTriggers(questId))
+        {
+            AreaTrigger const* trigger = sObjectMgr->GetAreaTrigger(triggerId);
+            if (!trigger || trigger->map != bot->GetMapId() || !bot->IsInAreaTriggerRadius(trigger))
+                continue;
+
+            data.exploreReportedAt = getMSTime();
+            WorldPacket packet(CMSG_AREATRIGGER);
+            packet << triggerId;
+            packet.rpos(0);
+            bot->GetSession()->HandleAreaTriggerOpcode(packet);
+            return true;
+        }
     }
 
     if (bot->GetDistance(data.pos) > 10.0f && !data.lastReachPOI)
@@ -634,6 +673,12 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
         data.objectiveIdx = 0;
         return true;
     }
+
+    // DarkChaos: at an exploration point, step onto the trigger's centre; some triggers are smaller than the
+    // 10 yd that counts as arrived.
+    if (exploring)
+        return MoveTo(data.pos.GetMapId(), data.pos.GetPositionX(), data.pos.GetPositionY(), data.pos.GetPositionZ(),
+                      false, false, false, true);
 
     // At the POI: keep the bot actively placed but avoid large
     // random 20yd hops that look like pacing back and forth. A small

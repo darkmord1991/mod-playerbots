@@ -504,9 +504,12 @@ uint32 NewRpgBaseAction::BestRewardIndex(Quest const* quest)
 
 bool NewRpgBaseAction::OrganizeQuestLog()
 {
+    // DarkChaos: a bot fills only the slots of a stock client. The slots after them belong to clients that
+    // negotiated the extended quest log, and counting those as free kept this clean-up from ever running.
+    uint16 const capacity = bot->GetSession()->HasExtendedQuestLog() ? MAX_QUEST_LOG_SIZE : CLIENT_QUEST_LOG_SIZE;
     int32 freeSlotNum = 0;
 
-    for (uint16 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
+    for (uint16 i = 0; i < capacity; ++i)
     {
         uint32 questId = bot->GetQuestSlotQuestId(i);
         if (!questId)
@@ -516,6 +519,12 @@ bool NewRpgBaseAction::OrganizeQuestLog()
     // it's ok if we have two more free slots
     if (freeSlotNum >= 2)
         return false;
+
+    // DarkChaos: with nothing left to drop the log stays full until a turn-in. Do not walk it on every call.
+    NewRpgInfo& rpgInfo = botAI->rpgInfo;
+    if (rpgInfo.questLogOrganizedAt && GetMSTimeDiffToNow(rpgInfo.questLogOrganizedAt) < questLogOrganizeGap)
+        return false;
+    rpgInfo.questLogOrganizedAt = getMSTime();
 
     int32 dropped = 0;
     // remove quests that not worth doing or not capable of doing
@@ -554,11 +563,22 @@ bool NewRpgBaseAction::OrganizeQuestLog()
     if (dropped >= 8)
         return true;
 
+    // DarkChaos: the next stage keeps a finished quest the bot can still hand in from where it is, so the work
+    // is not thrown away. A quest it already failed to hand in is not kept.
+    auto const awaitsTurnIn = [this](uint32 questId)
+    {
+        if (bot->GetQuestStatus(questId) != QUEST_STATUS_COMPLETE || botAI->lowPriorityQuest.count(questId))
+            return false;
+
+        std::vector<POIInfo> poiInfo;
+        return GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true);
+    };
+
     // remove festival/class quests and quests in different zone
     for (uint16 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
     {
         uint32 questId = bot->GetQuestSlotQuestId(i);
-        if (!questId)
+        if (!questId || awaitsTurnIn(questId))
             continue;
 
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
@@ -590,11 +610,13 @@ bool NewRpgBaseAction::OrganizeQuestLog()
     if (dropped >= 8)
         return true;
 
-    // clear quests log
+    // DarkChaos: upstream cleared the whole log here. A zone that offers more quests than the bot has slots
+    // then lost every quest the bot was working on, over and over. Only the quests the bot has given up on go;
+    // the others wait until a turn-in frees a slot.
     for (uint16 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
     {
         uint32 questId = bot->GetQuestSlotQuestId(i);
-        if (!questId)
+        if (!questId || !botAI->lowPriorityQuest.count(questId))
             continue;
 
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
@@ -686,6 +708,8 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
 
     if (toComplete && q_status.Status == QUEST_STATUS_COMPLETE)
     {
+        // DarkChaos: turn-in points in another zone, kept for when the bot's own zone and the spawn index have none.
+        std::vector<POIInfo> otherZone;
         for (QuestPOI const& qPoi : *poiVector)
         {
             if (!IsPoiOnBotMap(qPoi.MapId))
@@ -710,21 +734,44 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             if (bot->GetDistance2d(dx, dy) >= 1500.0f)
                 continue;
 
-            float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
+            // DarkChaos: the ground height under the point is the top surface. A turn-in in a cave, a cellar or a
+            // building under a hill stands far below it (Tracker Val'zij 200 yd, Bruor Ironbane 159 yd), so the
+            // bot waited on the hill over its head and gave up after five minutes. Go to the turn-in's own spawn
+            // when one stands at the point.
+            std::optional<float> spawnZ;
+            if (WorldPosition const* ender = DCQuestSpawnIndex::FindEnderNear(
+                    questId, bot->GetMapId(), bot->GetPhaseMask(), dx, dy, turnInSpawnRadius))
+            {
+                dx = ender->GetPositionX();
+                dy = ender->GetPositionY();
+                spawnZ = ender->GetPositionZ();
+            }
+
+            float dz =
+                spawnZ ? *spawnZ
+                       : std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
 
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
                 continue;
 
             if (bot->GetZoneId() != bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz))
+            {
+                otherZone.push_back({{dx, dy}, qPoi.ObjectiveIndex, spawnZ});
                 continue;
+            }
 
-            poiInfo.push_back({{dx, dy}, qPoi.ObjectiveIndex});
+            poiInfo.push_back({{dx, dy}, qPoi.ObjectiveIndex, spawnZ});
         }
 
-        if (poiInfo.empty())
-            return GetDCQuestSpawnPos(quest, poiInfo, toComplete);
+        if (poiInfo.empty() && GetDCQuestSpawnPos(quest, poiInfo, toComplete))
+            return true;
 
-        return true;
+        // A finished quest is handed in wherever its ender stands. Rejecting a turn-in in the next zone left 19,417
+        // finished quests in bot logs at the 11-20 shutdown, 4,244 of them with the ender 100-1,500 yd away.
+        if (poiInfo.empty())
+            poiInfo = std::move(otherZone);
+
+        return !poiInfo.empty();
     }
 
     if (q_status.Status != QUEST_STATUS_INCOMPLETE)
@@ -749,6 +796,20 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
 
         if (q_status.ItemCount[i] < quest->RequiredItemCount[i])
             incompleteObjectiveIdx.push_back(QUEST_OBJECTIVES_COUNT + i);
+    }
+
+    // DarkChaos: an exploration objective is an area trigger. Upstream never went there, so bots took such quests
+    // (The Fargodeep Mine 179 times in one run) and finished none. The trigger itself is the point, at its height.
+    if (quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_EXPLORATION_OR_EVENT) && !q_status.Explored)
+    {
+        for (uint32 triggerId : DCQuestSpawnIndex::GetExploreTriggers(questId))
+        {
+            AreaTrigger const* trigger = sObjectMgr->GetAreaTrigger(triggerId);
+            if (!trigger || trigger->map != bot->GetMapId() || bot->GetDistance2d(trigger->x, trigger->y) >= 1500.0f)
+                continue;
+
+            poiInfo.push_back({{trigger->x, trigger->y}, DCQuestSpawnIndex::EXPLORE_OBJECTIVE_IDX, trigger->z});
+        }
     }
 
     // Get POIs to go
@@ -820,7 +881,7 @@ namespace
 
 WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
 {
-    std::vector<WorldLocation> const& locs = sTravelMgr.GetLocsPerLevelCache(bot->GetLevel());
+    std::vector<TravelMgr::GrindSpot> const& spots = sTravelMgr.GetLocsPerLevelCache(bot->GetLevel());
     float hiRange = 500.0f;
     float loRange = 2500.0f;
     if (bot->GetLevel() < 5)
@@ -838,9 +899,15 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
             inCity = true;
     }
 
-    for (auto& loc : locs)
+    for (TravelMgr::GrindSpot const& spot : spots)
     {
+        WorldLocation const& loc = spot.loc;
         if (bot->GetMapId() != loc.GetMapId())
+            continue;
+
+        // Spawns in a phase the bot is not in (a quest phase it has not reached) are not there for it. Phase 1
+        // always counts: only a phase aura of the area takes it away, and the bot may be heading out of that area.
+        if (!(spot.phaseMask & (bot->GetPhaseMask() | PHASEMASK_NORMAL)))
             continue;
 
         // Nothing at or beyond loRange is ever picked, so skip it before the zone lookup below.
@@ -877,14 +944,14 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
     if (dest == WorldPosition())
     {
         LOG_TRACE("playerbots", "[New RPG] Bot {} found no grind pos (level {}, map {}, zone {}, {} spots)",
-                  bot->GetName(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), locs.size());
+                  bot->GetName(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), spots.size());
         return dest;
     }
 
     LOG_DEBUG("playerbots",
               "[New RPG] Bot {} select random grind pos Map:{} X:{} Y:{} Z:{} ({}+{} available in {}, {} other zone)",
               bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
-              hi_prepared_locs.size(), lo_prepared_locs.size() - hi_prepared_locs.size(), locs.size(),
+              hi_prepared_locs.size(), lo_prepared_locs.size() - hi_prepared_locs.size(), spots.size(),
               otherZoneLocs.size());
     return dest;
 }
@@ -1344,6 +1411,7 @@ bool NewRpgBaseAction::GetDCQuestSpawnPos(Quest const* quest, std::vector<POIInf
 {
     uint32 const questId = quest->GetQuestId();
     uint32 const mapId = bot->GetMapId();
+    uint32 const phaseMask = bot->GetPhaseMask();  // spawns of a quest phase the bot is not in are left out
     auto const status = bot->getQuestStatusMap().find(questId);
     if (status == bot->getQuestStatusMap().end())
         return false;
@@ -1376,7 +1444,7 @@ bool NewRpgBaseAction::GetDCQuestSpawnPos(Quest const* quest, std::vector<POIInf
         if (!toComplete)
             return false;
 
-        addNearest(DCQuestSpawnIndex::GetEnderPositions(questId, mapId), 1, -1);
+        addNearest(DCQuestSpawnIndex::GetEnderPositions(questId, mapId, phaseMask), 1, -1);
         return !poiInfo.empty();
     }
 
@@ -1388,7 +1456,7 @@ bool NewRpgBaseAction::GetDCQuestSpawnPos(Quest const* quest, std::vector<POIInf
         if (!quest->RequiredNpcOrGo[i] || status->second.CreatureOrGOCount[i] >= quest->RequiredNpcOrGoCount[i])
             continue;
 
-        addNearest(DCQuestSpawnIndex::GetObjectivePositions(questId, mapId, i), 5, static_cast<int32>(i));
+        addNearest(DCQuestSpawnIndex::GetObjectivePositions(questId, mapId, i, phaseMask), 5, static_cast<int32>(i));
     }
 
     // Item objectives: go where the item drops; the grind strategy kills and loots there. The objective index is
@@ -1399,7 +1467,7 @@ bool NewRpgBaseAction::GetDCQuestSpawnPos(Quest const* quest, std::vector<POIInf
         if (!item || status->second.ItemCount[i] >= quest->RequiredItemCount[i])
             continue;
 
-        addNearest(DCQuestSpawnIndex::GetItemSourcePositions(item, mapId), 5,
+        addNearest(DCQuestSpawnIndex::GetItemSourcePositions(item, mapId, phaseMask), 5,
                    static_cast<int32>(QUEST_OBJECTIVES_COUNT + i));
     }
 

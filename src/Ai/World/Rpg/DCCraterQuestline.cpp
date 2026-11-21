@@ -6,6 +6,7 @@
 
 #include "DCCraterQuestline.h"
 #include "BotStartLocation.h"
+#include "DCQuestSpawnIndex.h"
 #include "Log.h"
 #include "ObjectMgr.h"
 #include "Player.h"
@@ -233,6 +234,10 @@ std::vector<uint32> const& DCCraterQuestline::GetQuests()
 
 bool DCCraterQuestline::IsPlayable(uint32 questId)
 {
+    // The onboarding quests of the crater are credited from a gossip choice, which a bot does not make.
+    if (DCQuestSpawnIndex::IsSkipped(questId))
+        return false;
+
     QuestlineQuest const* quest = FindQuest(questId);
     return !quest || quest->playable;
 }

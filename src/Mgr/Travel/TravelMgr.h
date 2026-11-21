@@ -863,6 +863,13 @@ public:
         uint32        phaseMask;       // spawn phase mask; a bot outside it cannot see this flight master
     };
 
+    // Two or more grindable spawns that share a cell and a phase mask, at their centre
+    struct GrindSpot
+    {
+        WorldLocation loc;
+        uint32 phaseMask;  // the spawns' phase mask; a bot outside it cannot see them
+    };
+
     static TravelMgr& instance()
     {
         static TravelMgr instance;
@@ -892,7 +899,7 @@ public:
     bool IsQuestHandledInZone(uint32 questId, uint32 zoneId) const;
     std::vector<uint32> const& GetQuestZones(uint32 questId) const;
     bool SelectAuctioneerByMap(Player* bot, NpcLocation& outAuctioneer);
-    std::vector<WorldLocation> const& GetLocsPerLevelCache(uint8 level) const
+    std::vector<GrindSpot> const& GetLocsPerLevelCache(uint8 level) const
     {
         return GetLevelCacheEntry(locsPerLevelCache, level);
     }
@@ -1049,7 +1056,7 @@ private:
     std::map<uint8, std::vector<WorldLocation>> hordeHubsPerLevelCache;
     std::map<uint8, std::vector<BankerLocation>> bankerLocsPerLevelCache;
     std::unordered_map<uint32, WorldLocation> bankerEntryToLocation;
-    std::map<uint8, std::vector<WorldLocation>> locsPerLevelCache;
+    std::map<uint8, std::vector<GrindSpot>> locsPerLevelCache;
     std::unordered_map<uint32, std::vector<WorldLocation>> creatureSpawnsByTemplate;
     std::map<uint32, LevelBracket> zone2LevelBracket;
     std::map<uint32, LevelBracket> allianceZoneBracket;  // DarkChaos: faction-only brackets, win over zone2LevelBracket

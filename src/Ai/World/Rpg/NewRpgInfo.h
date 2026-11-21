@@ -59,6 +59,8 @@ struct NewRpgInfo
         uint32 lastReachPOI{0};
         // The quest is not in the log yet: pos is its quest giver, and the bot goes there to take it.
         bool pickUp{false};
+        // Last time the bot reported standing in one of the quest's exploration triggers.
+        uint32 exploreReportedAt{0};
     };
     // RPG_TRAVEL_FLIGHT
     struct TravelFlight
@@ -122,6 +124,7 @@ struct NewRpgInfo
     ObjectGuid questGiver;  // giver the bot is walking to or talking with
     uint32 questGiverSince{0};
     uint32 questGiverLastTry{0};
+    uint32 questLogOrganizedAt{0};  // last clean-up of a full quest log, see NewRpgBaseAction::OrganizeQuestLog
     GuidSet ignoredQuestGivers;  // skipped until the next IDLE
     // END QUEST GIVER
 
