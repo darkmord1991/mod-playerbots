@@ -2795,7 +2795,16 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
         if (incremental && oldItem)
         {
             float old_score = calculator.CalculateItem(oldItem->GetEntry(), oldItem->GetItemRandomPropertyId(), slot);
-            if (bestScoreForSlot < 1.2f * old_score)
+            // DarkChaos: above 80 a stale item (DCStaleGear.LevelGap behind the bot) gives way to anything better.
+            // The 1.2x bar takes 40-50 item levels: bots at 146-160 wore 448 against the reference curve's 490.
+            ItemTemplate const* oldProto = oldItem->GetTemplate();
+            uint32 const staleGap = sPlayerbotAIConfig.DCStaleGearLevelGap;
+            bool const staleOld = staleGap && sPlayerbotAIConfig.DCStaleGearMinLevel &&
+                                  bot->GetLevel() >= sPlayerbotAIConfig.DCStaleGearMinLevel &&
+                                  oldProto->Quality != ITEM_QUALITY_HEIRLOOM &&
+                                  oldProto->RequiredLevel + staleGap <= bot->GetLevel();
+            bool const tooSmall = staleOld ? bestScoreForSlot <= old_score : bestScoreForSlot < 1.2f * old_score;
+            if (tooSmall)
                 continue;
         }
         if (oldItem)
