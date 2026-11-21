@@ -41,6 +41,7 @@
 #include "SpellMgr.h"
 #include "Trainer.h"
 #include "World.h"
+#include <algorithm>
 #include <array>
 #include <unordered_set>
 #include <utility>
@@ -904,6 +905,12 @@ void PlayerbotFactory::Randomize(bool incremental)
     InitAvailableSpells();
     if (pmo)
         pmo->finish();
+
+    // DarkChaos: talents kept through a full re-roll have lost their spells and passive auras above. The pet the
+    // talent reset dismisses is replaced at the end, as for every full re-roll.
+    if (!incremental && sPlayerbotAIConfig.EquipAndSpecPersistence &&
+        level >= uint32(sPlayerbotAIConfig.EquipAndSpecPersistenceLevel))
+        ReapplyTalents();
 
     pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "PlayerbotFactory_Talents");
     LOG_DEBUG("playerbots", "Initializing talents...");
@@ -1853,6 +1860,88 @@ uint32 PlayerbotFactory::InitTalentsTree(bool increment /*false*/, bool use_temp
 
     bot->SendTalentsInfoData(false);
     return sPlayerbotAIConfig.RandomClassSpecIndex[cls][specTab];
+}
+
+// DarkChaos: a re-roll under EquipAndSpecPersistence keeps the talents, but ClearSpells() removes their spells,
+// CancelAuras() their passive auras, and LearnTalent() skips a talent the bot already has.
+void PlayerbotFactory::ReapplyTalents()
+{
+    struct KeptTalent
+    {
+        uint32 talentId = 0;
+        uint32 rank = 0;
+        uint32 row = 0;
+        uint32 column = 0;
+    };
+
+    std::unordered_map<uint32, KeptTalent> kept;
+    uint8 const spec = bot->GetActiveSpec();
+    for (auto const& [spellId, talent] : bot->GetTalentMap())
+    {
+        if (talent->State == PLAYERSPELL_REMOVED || !talent->IsInSpec(spec))
+            continue;
+
+        TalentSpellPos const* pos = GetTalentSpellPos(spellId);
+        TalentEntry const* talentInfo = pos ? sTalentStore.LookupEntry(pos->talent_id) : nullptr;
+        if (!talentInfo)
+            continue;
+
+        KeptTalent& entry = kept[talentInfo->TalentID];
+        if (!entry.talentId || pos->rank > entry.rank)
+            entry = {talentInfo->TalentID, pos->rank, talentInfo->Row, talentInfo->Col};
+    }
+
+    if (kept.empty())
+        return;
+
+    // Row by row, so each talent finds the points it needs already spent in the rows above.
+    std::vector<KeptTalent> order;
+    order.reserve(kept.size());
+    for (auto const& [talentId, talent] : kept)
+        order.push_back(talent);
+
+    std::sort(order.begin(), order.end(), [](KeptTalent const& a, KeptTalent const& b)
+        { return a.row != b.row ? a.row < b.row : a.column < b.column; });
+
+    bot->resetTalents(true);
+    for (KeptTalent const& talent : order)
+        bot->LearnTalent(talent.talentId, talent.rank);
+}
+
+// DarkChaos: the spells Player::LearnTalent() adds for the active spec's talents, where they are missing. Without a
+// talent reset, so the pet stays; the core puts the passive auras back itself when the character loads.
+uint32 PlayerbotFactory::RestoreTalentSpells()
+{
+    std::vector<uint32> missing;
+    uint8 const spec = bot->GetActiveSpec();
+    for (auto const& [spellId, talent] : bot->GetTalentMap())
+    {
+        if (talent->State == PLAYERSPELL_REMOVED || !talent->IsInSpec(spec))
+            continue;
+
+        TalentSpellPos const* pos = GetTalentSpellPos(spellId);
+        TalentEntry const* talentInfo = pos ? sTalentStore.LookupEntry(pos->talent_id) : nullptr;
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+        if (!talentInfo || !spellInfo)
+            continue;
+
+        if (talentInfo->addToSpellBook && !spellInfo->HasAttribute(SPELL_ATTR0_PASSIVE) &&
+            !spellInfo->HasEffect(SPELL_EFFECT_LEARN_SPELL) && !bot->HasSpell(spellId))
+            missing.push_back(spellId);
+
+        for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+        {
+            uint32 const learned = spellInfo->Effects[i].TriggerSpell;
+            if (spellInfo->Effects[i].Effect == SPELL_EFFECT_LEARN_SPELL && sSpellMgr->IsAdditionalTalentSpell(learned) &&
+                !bot->HasSpell(learned))
+                missing.push_back(learned);
+        }
+    }
+
+    for (uint32 spellId : missing)
+        bot->learnSpell(spellId);
+
+    return static_cast<uint32>(missing.size());
 }
 
 // LimitTalentsExpansion: up to level 60 rows 0-5 and the middle talent of row 6, up to 70 rows 0-7 and the

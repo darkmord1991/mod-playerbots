@@ -3162,6 +3162,16 @@ void RandomPlayerbotMgr::OnBotLoginInternal(Player* const bot)
         factory.InitGuild();
     }
 
+    // DarkChaos: re-rolls before PlayerbotFactory::ReapplyTalents() saved bots with talents but without their
+    // spells. Give the spells back, then the trainer ranks that build on them.
+    PlayerbotFactory talentRepair(bot, bot->GetLevel());
+    if (uint32 const restored = talentRepair.RestoreTalentSpells())
+    {
+        talentRepair.InitAvailableSpells();
+        LOG_INFO("playerbots", "Bot {} (level {}): {} talent spell(s) were missing, learned again.", bot->GetName(),
+            bot->GetLevel(), restored);
+    }
+
     RandomPlayerbotFactory::AssignBotToArenaTeam(bot);
 
     if (sPlayerbotAIConfig.RandomBotFixedLevel)

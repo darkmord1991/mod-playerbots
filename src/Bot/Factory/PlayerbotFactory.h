@@ -73,6 +73,9 @@ public:
     static void InitTalentsBySpecNo(Player* bot, int specNo, bool reset);
     static void InitTalentsByParsedSpecLink(Player* bot, std::vector<std::vector<uint32>> parsedSpecLink, bool reset);
     void InitAvailableSpells();
+    // DarkChaos: learns the active spec's talents again, giving back spells and passive auras a re-roll took.
+    void ReapplyTalents();
+    uint32 RestoreTalentSpells();
     static bool IsTrainerSpellAllowedForBot(Player* bot, Trainer::Trainer const* trainer,
                                              Trainer::Spell const* trainerSpell);
     void InitClassSpells();
