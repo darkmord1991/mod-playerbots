@@ -14,6 +14,8 @@
 #include "ScriptedCreature.h"
 #include "World.h"
 
+#include <mutex>
+
 const Position ULDUAR_THORIM_NEAR_ARENA_CENTER = Position(2134.9854f, -263.11853f, 419.8465f);
 const Position ULDUAR_THORIM_NEAR_ENTRANCE_POSITION = Position(2172.4355f, -258.27957f, 418.47162f);
 const Position ULDUAR_THORIM_GAUNTLET_LEFT_SIDE_6_YARDS_1 = Position(2237.6187f, -265.08844f, 412.17548f);
@@ -57,6 +59,9 @@ std::unordered_map<ObjectGuid, time_t> RazorscaleBossHelper::_harpoonCooldowns;
 // Prevent role assignment spam
 std::unordered_map<ObjectGuid, std::time_t> RazorscaleBossHelper::_lastRoleSwapTime;
 const std::time_t RazorscaleBossHelper::_roleSwapCooldown;
+// Both tables are shared by every Ulduar instance, each updated on its own map thread: read and written under this
+// lock (the pattern of SquidBots' world freeze fix, Zyth45/mod-playerbots 92fd4d9e)
+static std::mutex razorscaleStateLock;
 
 bool RazorscaleBossHelper::UpdateBossAI()
 {
@@ -101,13 +106,16 @@ bool RazorscaleBossHelper::IsHarpoonReady(GameObject* harpoonGO)
     if (!harpoonGO)
         return false;
 
-    auto it = _harpoonCooldowns.find(harpoonGO->GetGUID());
-    if (it != _harpoonCooldowns.end())
     {
-        time_t currentTime = std::time(nullptr);
-        time_t elapsedTime = currentTime - it->second;
-        if (elapsedTime < HARPOON_COOLDOWN_DURATION)
-            return false;
+        std::lock_guard<std::mutex> guard(razorscaleStateLock);
+        auto it = _harpoonCooldowns.find(harpoonGO->GetGUID());
+        if (it != _harpoonCooldowns.end())
+        {
+            time_t currentTime = std::time(nullptr);
+            time_t elapsedTime = currentTime - it->second;
+            if (elapsedTime < HARPOON_COOLDOWN_DURATION)
+                return false;
+        }
     }
 
     return harpoonGO->GetGoState() == GO_STATE_READY;
@@ -119,6 +127,7 @@ void RazorscaleBossHelper::SetHarpoonOnCooldown(GameObject* harpoonGO)
         return;
 
     time_t currentTime = std::time(nullptr);
+    std::lock_guard<std::mutex> guard(razorscaleStateLock);
     _harpoonCooldowns[harpoonGO->GetGUID()] = currentTime;
 }
 
@@ -186,17 +195,17 @@ bool RazorscaleBossHelper::CanSwapRoles() const
     if (!botGuid)
         return false;
 
-    // If no entry exists yet for this bot, initialize it to 0
-    auto it = _lastRoleSwapTime.find(botGuid);
-    if (it == _lastRoleSwapTime.end())
+    // No entry yet for this bot: it never swapped (0). Read under the lock, no iterator kept past it
+    std::time_t lastSwapTime = 0;
     {
-        _lastRoleSwapTime[botGuid] = 0;
-        it = _lastRoleSwapTime.find(botGuid);
+        std::lock_guard<std::mutex> guard(razorscaleStateLock);
+        auto it = _lastRoleSwapTime.find(botGuid);
+        if (it != _lastRoleSwapTime.end())
+            lastSwapTime = it->second;
     }
 
     // Compare the current time against the stored time
     std::time_t currentTime = std::time(nullptr);
-    std::time_t lastSwapTime = it->second;
 
     return (currentTime - lastSwapTime) >= _roleSwapCooldown;
 }
@@ -264,5 +273,6 @@ void RazorscaleBossHelper::AssignRolesBasedOnHealth()
         return;
 
     // Set current time in the cooldown map for this bot to start cooldown
+    std::lock_guard<std::mutex> guard(razorscaleStateLock);
     _lastRoleSwapTime[botGuid] = std::time(nullptr);
 }
