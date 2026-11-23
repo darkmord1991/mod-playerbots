@@ -672,6 +672,8 @@ private:
     Item* FindItemInInventory(std::function<bool(ItemTemplate const*)> checkItem) const;
     void HandleCommands();
     void HandleCommand(uint32 type, std::string const& text, Player& fromPlayer, const uint32 lang = LANG_UNIVERSAL);
+    // A bot left hanging in the air after a taxi flight falls to its floor (DoNextAction, every 10 s out of combat)
+    void DropToFloorIfHanging();
     inline bool IsValidUnit(Unit const* unit) const
     {
         return unit && unit->IsInWorld() && !unit->IsDuringRemoveFromWorld();
@@ -707,6 +709,7 @@ protected:
     BotCheatMask cheatMask = BotCheatMask::none;
     Position jumpDestination = Position();
     uint32 nextTransportCheck = 0;
+    uint32 hangingCheckedAt = 0;
     bool spellInterruptRequested = false;
 };
 

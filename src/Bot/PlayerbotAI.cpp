@@ -1683,6 +1683,12 @@ void PlayerbotAI::DoNextAction(bool min)
         }
     }
 
+    if (!bot->IsInCombat() && GetMSTimeDiffToNow(hangingCheckedAt) >= 10000)
+    {
+        hangingCheckedAt = getMSTime();
+        DropToFloorIfHanging();
+    }
+
     bool minimal = !this->AllowActivity();
 
     currentEngine->DoNextAction(nullptr, 0, (minimal || min));
@@ -1727,6 +1733,47 @@ void PlayerbotAI::DoNextAction(bool min)
         bot->RemoveAurasByType(SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED);
         bot->RemoveAurasByType(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED);
     }
+}
+
+// A bot off a taxi stands where the flight path's last node was, often a few yards over the ground: a client sends its
+// own landing when the flight ends, a bot sends nothing, and the server never lets a unit that stands still fall
+// (FlightPathMovementGenerator::DoFinalize only clears the flight state). SquidBots counted 169 bots hanging over
+// flight masters (Morgan's Vigil 2.9 yards up, Darkshire, Thelsamar). Ported from Zyth45/mod-playerbots 982322c4,
+// dae43763 and d30625d5.
+void PlayerbotAI::DropToFloorIfHanging()
+{
+    // In a taxi, on a transport or vehicle, in water, or kept up on purpose (flying, levitation, hover)
+    if (!bot->IsAlive() || bot->IsInFlight() || bot->GetTransport() || bot->GetVehicle() || bot->IsInWater() ||
+        bot->IsBeingTeleported() || bot->HasAuraType(SPELL_AURA_FLY) ||
+        bot->HasAuraType(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED) || bot->HasAuraType(SPELL_AURA_HOVER) ||
+        bot->HasUnitMovementFlag(MOVEMENTFLAG_HOVER))
+        return;
+
+    // It kept the flight's flying or gravity flag: it floated over the flight master
+    if (bot->HasUnitMovementFlag(MOVEMENTFLAG_FLYING) || bot->HasUnitMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY))
+    {
+        bot->SetDisableGravity(false);
+        bot->RemoveUnitMovementFlag(MOVEMENTFLAG_FLYING);
+        bot->GetMotionMaster()->MoveFall();
+        return;
+    }
+
+    // Without them, standing still over its floor: only outdoors (a platform or a tower has its own floor under the
+    // bot, an indoor floor is left alone), with a floor found, no water under the bot, and 1.5 to 8 yards up
+    if (bot->IsFalling() || bot->isMoving() || !bot->IsOutdoors())
+        return;
+
+    float const floorZ = bot->GetFloorZ();
+    if (floorZ <= INVALID_HEIGHT)
+        return;
+
+    LiquidData const& liquid = bot->GetLiquidData();
+    if (liquid.Level > INVALID_HEIGHT && liquid.Level >= floorZ)
+        return;
+
+    float const above = bot->GetPositionZ() - floorZ;
+    if (above > 1.5f && above <= 8.0f)
+        bot->GetMotionMaster()->MoveFall();
 }
 
 void PlayerbotAI::ReInitCurrentEngine()
