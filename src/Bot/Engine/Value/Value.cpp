@@ -5,9 +5,27 @@
  */
 
 #include "Value.h"
+#include "ObjectAccessor.h"
 #include "PerfMonitor.h"
 #include "Playerbots.h"
 #include "Timer.h"
+
+namespace
+{
+    // Unit values keep the GUID and find the unit again at every read: a stored pointer outlives a despawned creature
+    // or a player who logged out, and reading it (even IsInWorld) crashed the server. Players are found anywhere, as a
+    // group leader or master can be on another map. Ported from SquidBots (Zyth45/mod-playerbots 5768f458).
+    Unit* FindValueUnit(PlayerbotAI* botAI, ObjectGuid guid)
+    {
+        if (!guid)
+            return nullptr;
+
+        if (guid.IsPlayer())
+            return ObjectAccessor::FindPlayer(guid);
+
+        return botAI->GetUnit(guid);
+    }
+}
 
 UnitCalculatedValue::UnitCalculatedValue(PlayerbotAI* botAI, std::string const name, int32 checkInterval)
     : CalculatedValue<Unit*>(botAI, name, checkInterval)
@@ -140,7 +158,10 @@ Unit* UnitCalculatedValue::Get()
             value = Calculate();
             if (pmo)
                 pmo->finish();
+            _guid = value ? value->GetGUID() : ObjectGuid::Empty;
         }
+        else
+            value = FindValueUnit(botAI, _guid);
     }
     // Prevent crashing by InWorld check
     if (value && value->IsInWorld())
@@ -148,10 +169,28 @@ Unit* UnitCalculatedValue::Get()
     return nullptr;
 }
 
+void UnitCalculatedValue::Set(Unit* val)
+{
+    value = val;
+    _guid = val ? val->GetGUID() : ObjectGuid::Empty;
+}
+
 Unit* UnitManualSetValue::Get()
 {
-    // Prevent crashing by InWorld check
+    value = FindValueUnit(botAI, _guid);
     if (value && value->IsInWorld())
         return value;
     return nullptr;
+}
+
+void UnitManualSetValue::Set(Unit* val)
+{
+    value = val;
+    _guid = val ? val->GetGUID() : ObjectGuid::Empty;
+}
+
+void UnitManualSetValue::Reset()
+{
+    ManualSetValue<Unit*>::Reset();
+    _guid = defaultValue ? defaultValue->GetGUID() : ObjectGuid::Empty;
 }

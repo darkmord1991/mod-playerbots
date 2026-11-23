@@ -306,6 +306,10 @@ public:
 
     std::string const Format() override;
     Unit* Get() override;
+    void Set(Unit* val) override;
+
+private:
+    ObjectGuid _guid;
 };
 
 class CDPairCalculatedValue : public CalculatedValue<CreatureData const*>
@@ -367,12 +371,18 @@ class UnitManualSetValue : public ManualSetValue<Unit*>
 {
 public:
     UnitManualSetValue(PlayerbotAI* botAI, Unit* defaultValue, std::string const name = "value")
-        : ManualSetValue<Unit*>(botAI, defaultValue, name)
+        : ManualSetValue<Unit*>(botAI, defaultValue, name),
+          _guid(defaultValue ? defaultValue->GetGUID() : ObjectGuid::Empty)
     {
     }
 
     std::string const Format() override;
     Unit* Get() override;
+    void Set(Unit* val) override;
+    void Reset() override;
+
+private:
+    ObjectGuid _guid;
 };
 
 class DisperseDistanceValue : public ManualSetValue<float>
