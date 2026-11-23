@@ -54,11 +54,30 @@ public:
     ReachSpellAction(PlayerbotAI* botAI);
 };
 
+// Walks back into line of sight of the current target. Ported from SquidBots (Zyth45/mod-playerbots aee9b7e9).
+class ReachLineOfSightAction : public MovementAction
+{
+public:
+    ReachLineOfSightAction(PlayerbotAI* botAI, std::string const name = "reach line of sight")
+        : MovementAction(botAI, name)
+    {
+    }
+
+    bool Execute(Event event) override;
+    bool isUseful() override;
+    std::string const GetTargetName() override;
+
+private:
+    Player* FindGroupMemberInSightOf(Unit* target);
+};
+
 class ReachPartyMemberToHealAction : public ReachTargetAction
 {
 public:
     ReachPartyMemberToHealAction(PlayerbotAI* botAI);
 
+    bool Execute(Event event) override;
+    bool isUseful() override;
     std::string const GetTargetName() override;
 };
 

@@ -96,6 +96,7 @@ public:
         creators["attack"] = &ActionContext::melee;
         creators["melee"] = &ActionContext::melee;
         creators["reach spell"] = &ActionContext::ReachSpell;
+        creators["reach line of sight"] = &ActionContext::reach_line_of_sight;
         creators["reach melee"] = &ActionContext::ReachMelee;
         creators["reach party member to heal"] = &ActionContext::reach_party_member_to_heal;
         creators["reach party member to resurrect"] = &ActionContext::reach_party_member_to_resurrect;
@@ -327,6 +328,7 @@ private:
     static Action* shoot(PlayerbotAI* botAI) { return new CastShootAction(botAI); }
     static Action* melee(PlayerbotAI* botAI) { return new MeleeAction(botAI); }
     static Action* ReachSpell(PlayerbotAI* botAI) { return new ReachSpellAction(botAI); }
+    static Action* reach_line_of_sight(PlayerbotAI* botAI) { return new ReachLineOfSightAction(botAI); }
     static Action* ReachMelee(PlayerbotAI* botAI) { return new ReachMeleeAction(botAI); }
     static Action* reach_party_member_to_heal(PlayerbotAI* botAI) { return new ReachPartyMemberToHealAction(botAI); }
     static Action* reach_party_member_to_resurrect(PlayerbotAI* botAI) { return new ReachPartyMemberToResurrectAction(botAI); }

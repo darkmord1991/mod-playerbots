@@ -10,6 +10,9 @@
 #include "Playerbots.h"
 #include "ServerFacade.h"
 
+// How close to the member who sees the target a ranged bot stands.
+static constexpr float GROUP_SIGHT_SPOT_DISTANCE = 3.0f;
+
 bool ReachTargetAction::Execute(Event /*event*/) { return ReachCombatTo(AI_VALUE(Unit*, GetTargetName()), distance); }
 
 bool ReachTargetAction::isUseful()
@@ -51,9 +54,95 @@ ReachSpellAction::ReachSpellAction(PlayerbotAI* botAI)
 {
 }
 
+bool ReachLineOfSightAction::Execute(Event /*event*/)
+{
+    Unit* target = GetTarget();
+    if (!target || !IsMovingAllowed(target))
+        return false;
+
+    if (!PlayerbotAI::IsRanged(bot) || !bot->GetGroup())
+        return MoveToLOS(target, PlayerbotAI::IsRanged(bot));
+
+    // Walking towards the enemy can pull idle packs; a spot the group already holds cannot.
+    Player* member = FindGroupMemberInSightOf(target);
+    if (!member)
+        return false;
+
+    return MoveNear(member, GROUP_SIGHT_SPOT_DISTANCE, MovementPriority::MOVEMENT_COMBAT);
+}
+
+Player* ReachLineOfSightAction::FindGroupMemberInSightOf(Unit* target)
+{
+    Player* nearest = nullptr;
+    float nearestDistance = sPlayerbotAIConfig.SightDistance;
+    float const range = botAI->GetRange("spell");
+
+    for (GroupReference* ref = bot->GetGroup()->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || member == bot || !member->IsAlive() || member->IsCharmed() ||
+            member->GetMapId() != bot->GetMapId())
+            continue;
+
+        float const distance = bot->GetExactDist(member);
+        if (distance >= nearestDistance || distance <= GROUP_SIGHT_SPOT_DISTANCE)
+            continue;
+
+        if (!member->IsWithinCombatRange(target, range) || !member->IsWithinLOSInMap(target))
+            continue;
+
+        nearest = member;
+        nearestDistance = distance;
+    }
+
+    return nearest;
+}
+
+bool ReachLineOfSightAction::isUseful()
+{
+    if (botAI->HasStrategy("stay", botAI->GetState()))
+        return false;
+
+    if (bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL))
+        return false;
+
+    Unit* target = GetTarget();
+    return target && !bot->IsWithinLOSInMap(target);
+}
+
+std::string const ReachLineOfSightAction::GetTargetName() { return "current target"; }
+
 ReachPartyMemberToHealAction::ReachPartyMemberToHealAction(PlayerbotAI* botAI)
     : ReachTargetAction(botAI, "reach party member to heal", botAI->GetRange("heal"))
 {
+}
+
+bool ReachPartyMemberToHealAction::Execute(Event event)
+{
+    Unit* target = GetTarget();
+    if (!target)
+        return false;
+
+    if (sPlayerbotAIConfig.DCRegainLineOfSight && bot->IsWithinCombatRange(target, distance) &&
+        !bot->IsWithinLOSInMap(target))
+        return IsMovingAllowed(target) && MoveToLOS(target, true);
+
+    return ReachTargetAction::Execute(event);
+}
+
+bool ReachPartyMemberToHealAction::isUseful()
+{
+    if (ReachTargetAction::isUseful())
+        return true;
+
+    if (!sPlayerbotAIConfig.DCRegainLineOfSight || botAI->HasStrategy("stay", botAI->GetState()))
+        return false;
+
+    if (bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL))
+        return false;
+
+    Unit* target = GetTarget();
+    return target && !bot->IsWithinLOSInMap(target);
 }
 
 std::string const ReachPartyMemberToHealAction::GetTargetName() { return "party member to heal"; }

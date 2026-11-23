@@ -1371,6 +1371,13 @@ Playerbots.botActiveAloneSmartScaleWhenMaxLevel = 80
 Playerbots.DCPerf.SlowIdleTriggers = 0
 Playerbots.DCPerf.AiBudgetMs = 0
 
+# DarkChaos: regain line of sight in combat, ported from SquidBots (Zyth45/mod-playerbots aee9b7e9, after f33rx
+# dc9f429a). A ranged bot in a group whose target is behind an obstacle walks to the nearest group member that sees it,
+# and holds position if none does; melee and solo bots walk towards the target. Healers keep the members they cannot
+# see as candidates, at a penalty, and walk until they see them instead of ignoring them.
+# Default: 1 (enabled)
+Playerbots.DCRegainLineOfSight = 1
+
 #
 #
 ####################################################################################################

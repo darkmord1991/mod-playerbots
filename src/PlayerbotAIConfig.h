@@ -386,6 +386,8 @@ public:
     // DarkChaos: idle-bot cost switches (Playerbots.DCPerf.*), see playerbots.conf.dist.
     bool DCSlowIdleTriggers;
     uint32 DCAiBudgetMs;
+    // DarkChaos: walk back into line of sight of the target or the member to heal (Playerbots.DCRegainLineOfSight).
+    bool DCRegainLineOfSight;
 
     bool FreeMethodLoot;
     int32 LootNeedRollLevel;

@@ -101,6 +101,16 @@ public:
     std::string const GetTargetName() override { return "party member to heal"; }
 };
 
+// The current target is alive but out of line of sight (checked every 2 s). Ported from SquidBots
+// (Zyth45/mod-playerbots aee9b7e9).
+class TargetOutOfSightTrigger : public Trigger
+{
+public:
+    TargetOutOfSightTrigger(PlayerbotAI* botAI) : Trigger(botAI, "target out of sight", 2) {}
+
+    bool IsActive() override;
+};
+
 class FarFromMasterTrigger : public Trigger
 {
 public:
