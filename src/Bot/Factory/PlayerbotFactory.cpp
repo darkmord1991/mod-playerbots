@@ -38,6 +38,7 @@
 #include "ReputationMgr.h"
 #include "SharedDefines.h"
 #include "StatsWeightCalculator.h"
+#include "SpellAuras.h"
 #include "SpellMgr.h"
 #include "Trainer.h"
 #include "World.h"
@@ -1875,8 +1876,8 @@ uint32 PlayerbotFactory::InitTalentsTree(bool increment /*false*/, bool use_temp
     return sPlayerbotAIConfig.RandomClassSpecIndex[cls][specTab];
 }
 
-// DarkChaos: a re-roll under EquipAndSpecPersistence keeps the talents, but ClearSpells() removes their spells,
-// CancelAuras() their passive auras, and LearnTalent() skips a talent the bot already has.
+// DarkChaos: a re-roll under EquipAndSpecPersistence keeps the talents, but ClearSpells() removes their spells and
+// passive auras, and LearnTalent() skips a talent the bot already has.
 void PlayerbotFactory::ReapplyTalents()
 {
     struct KeptTalent
@@ -5131,7 +5132,35 @@ void PlayerbotFactory::InitGlyphs(bool increment)
     bot->SendTalentsInfoData(false);
 }
 
-void PlayerbotFactory::CancelAuras() { bot->RemoveAllAuras(); }
+// RemoveAllAuras() would take the passives too (talents, racials, item and set auras), and the core lays those again
+// only at login or when a spell is learned anew, which an incremental re-roll never does: such bots dealt about 28%
+// less damage until their next login. Keeps passives and positive death-persistent auras. Ported from SquidBots
+// (Zyth45/mod-playerbots 34b48b9b).
+void PlayerbotFactory::CancelAuras()
+{
+    std::vector<std::pair<uint32, Aura const*>> listed;
+    for (auto const& [spellId, application] : bot->GetAppliedAuras())
+    {
+        Aura const* aura = application->GetBase();
+        if (!application->GetRemoveMode() && !aura->IsPassive() &&
+            !(application->IsPositive() && aura->IsDeathPersistent()))
+            listed.emplace_back(spellId, aura);
+    }
+
+    // Looked up again per aura: removing one can take linked auras with it.
+    for (auto const& [spellId, aura] : listed)
+    {
+        auto const range = bot->GetAppliedAuras().equal_range(spellId);
+        for (auto itr = range.first; itr != range.second; ++itr)
+        {
+            if (itr->second->GetBase() == aura && !itr->second->GetRemoveMode())
+            {
+                bot->RemoveAura(itr->second);
+                break;
+            }
+        }
+    }
+}
 
 void PlayerbotFactory::InitInventory()
 {
