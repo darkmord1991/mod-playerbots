@@ -12,6 +12,41 @@
 #include "ObjectMgr.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+#include "Timer.h"
+
+#include <map>
+#include <mutex>
+
+namespace
+{
+    // How long a sent vote is remembered; a roll lasts 60 s.
+    constexpr uint32 LOOT_ROLL_VOTE_MEMORY_MS = 2 * MINUTE * IN_MILLISECONDS;
+}
+
+// Group::CountRollVote changes the group and hands the item to a winner who may be on another map, so the vote is a
+// CMSG_LOOT_ROLL handled on the world thread, like a player's. The roll shows no vote until then, and a vote counted
+// twice is counted twice: one vote per bot and roll is sent. Ported from SquidBots (Zyth45/mod-playerbots cd9b3121).
+static void QueueLootRoll(Player* bot, ObjectGuid rollGuid, uint8 vote)
+{
+    static std::mutex sentLock;
+    static std::map<std::pair<ObjectGuid, ObjectGuid>, uint32> sent;
+
+    uint32 const now = getMSTime();
+    {
+        std::lock_guard<std::mutex> guard(sentLock);
+        for (auto itr = sent.begin(); itr != sent.end();)
+            itr = getMSTimeDiff(itr->second, now) > LOOT_ROLL_VOTE_MEMORY_MS ? sent.erase(itr) : std::next(itr);
+
+        if (!sent.emplace(std::make_pair(bot->GetGUID(), rollGuid), now).second)
+            return;
+    }
+
+    WorldPacket* packet = new WorldPacket(CMSG_LOOT_ROLL, 8 + 4 + 1);
+    *packet << rollGuid;
+    *packet << uint32(0);  // item slot, unused by the handler
+    *packet << vote;
+    bot->GetSession()->QueuePacket(packet);
+}
 
 bool LootRollAction::Execute(Event /*event*/)
 {
@@ -104,10 +139,10 @@ bool LootRollAction::Execute(Event /*event*/)
         {
             case MASTER_LOOT:
             case FREE_FOR_ALL:
-                group->CountRollVote(bot->GetGUID(), guid, PASS);
+                QueueLootRoll(bot, guid, PASS);
                 break;
             default:
-                group->CountRollVote(bot->GetGUID(), guid, vote);
+                QueueLootRoll(bot, guid, vote);
                 break;
         }
         voted = true;
@@ -184,7 +219,7 @@ bool MasterLootRollAction::Execute(Event event)
     if (!group)
         return false;
 
-    group->CountRollVote(bot->GetGUID(), creatureGuid, CalculateRollVote(proto));
+    QueueLootRoll(bot, creatureGuid, CalculateRollVote(proto));
 
     return true;
 }

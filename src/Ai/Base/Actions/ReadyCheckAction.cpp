@@ -11,12 +11,14 @@
 #include <mutex>
 #include <vector>
 
+// MSG_RAID_READY_CHECK is a world-thread opcode, so the answer is queued on the bot's session. The core reads the
+// state alone: the guid that used to come first made its first byte the answer. Ported from SquidBots
+// (Zyth45/mod-playerbots cd9b3121).
 static void SendReadyConfirm(Player* bot)
 {
-    WorldPacket packet(MSG_RAID_READY_CHECK);
-    packet << bot->GetGUID();
-    packet << uint8(1);
-    bot->GetSession()->HandleRaidReadyCheckOpcode(packet);
+    WorldPacket* packet = new WorldPacket(MSG_RAID_READY_CHECK, 1);
+    *packet << uint8(1);
+    bot->GetSession()->QueuePacket(packet);
 }
 
 std::string const formatPercent(std::string const name, uint8 value, float percent)
