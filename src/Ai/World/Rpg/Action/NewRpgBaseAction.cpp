@@ -1113,6 +1113,11 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
                     !DCCraterQuestline::IsPlayable(questId) || !DCQuestSpawnIndex::IsPlayable(questId, bot->GetMapId()))
                     continue;
 
+                // Kept in the log, but not worked on until the bot is close to its targets' level.
+                Quest const* logQuest = sObjectMgr->GetQuestTemplate(questId);
+                if (!logQuest || NewRpgHelpers::HasKillTargetAboveBot(bot, logQuest))
+                    continue;
+
                 std::vector<POIInfo> poiInfo;
                 if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
                     availableQuests.push_back(questId);
@@ -1233,6 +1238,11 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
                     !DCCraterQuestline::IsPlayable(questId) || !DCQuestSpawnIndex::IsPlayable(questId, bot->GetMapId()))
                     continue;
 
+                // Kept in the log, but not worked on until the bot is close to its targets' level.
+                Quest const* logQuest = sObjectMgr->GetQuestTemplate(questId);
+                if (!logQuest || NewRpgHelpers::HasKillTargetAboveBot(bot, logQuest))
+                    continue;
+
                 std::vector<POIInfo> poiInfo;
                 if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
                 {
@@ -1318,6 +1328,10 @@ bool NewRpgBaseAction::FollowCraterQuestline()
         uint32 const questId = bot->GetQuestSlotQuestId(slot);
         uint32 const rank = DCCraterQuestline::GetRank(questId);
         if (rank >= doRank || botAI->lowPriorityQuest.count(questId) || !DCCraterQuestline::IsPlayable(questId))
+            continue;
+
+        Quest const* logQuest = sObjectMgr->GetQuestTemplate(questId);
+        if (!logQuest || NewRpgHelpers::HasKillTargetAboveBot(bot, logQuest))
             continue;
 
         std::vector<POIInfo> poiInfo;

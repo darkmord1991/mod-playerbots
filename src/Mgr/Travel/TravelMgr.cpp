@@ -20,6 +20,7 @@
 #include "Map.h"
 #include "MapCollisionData.h"
 #include "MapMgr.h"
+#include "NewRpgHelpers.h"
 #include "ObjectAccessor.h"
 #include "PathGenerator.h"
 #include "Playerbots.h"
@@ -5248,6 +5249,12 @@ void TravelMgr::PrepareQuestGiverTeleportIndex()
     for (size_t i = sGameEventMgr->GetEventMap().size(); i < eventCreatureGuids.size(); ++i)
         eventSpawns.insert(eventCreatureGuids[i].begin(), eventCreatureGuids[i].end());
 
+    // Each team's player faction (its first race) for the kill-target check of NewRpgHelpers::IsQuestCapableDoing.
+    ChrRacesEntry const* human = sChrRacesStore.LookupEntry(RACE_HUMAN);
+    ChrRacesEntry const* orc = sChrRacesStore.LookupEntry(RACE_ORC);
+    FactionTemplateEntry const* allianceFaction = human ? sFactionTemplateStore.LookupEntry(human->FactionID) : nullptr;
+    FactionTemplateEntry const* hordeFaction = orc ? sFactionTemplateStore.LookupEntry(orc->FactionID) : nullptr;
+
     for (auto const& [guid, creData] : sObjectMgr->GetAllCreatureData())
     {
         if (eventSpawns.count(guid))
@@ -5306,14 +5313,19 @@ void TravelMgr::PrepareQuestGiverTeleportIndex()
             // Unknown quest levels span to maxLevel and are pruned at call time by CanTakeQuest.
             uint32 lo = quest->GetMinLevel() > 0 ? quest->GetMinLevel() : 1;
             int32 hi = (qLevel > 0) ? (qLevel + window) : (int32)maxLevel;
+            // Not below the level the bot needs for what the quest has it kill.
+            int32 const allianceLo =
+                int32(NewRpgHelpers::GetHighestKillTargetLevel(quest, allianceFaction, nullptr)) - window;
+            int32 const hordeLo =
+                int32(NewRpgHelpers::GetHighestKillTargetLevel(quest, hordeFaction, nullptr)) - window;
             for (uint32 level = lo; level <= maxLevel && (int32)level <= hi; ++level)
             {
-                if (forAlliance)
+                if (forAlliance && int32(level) >= allianceLo)
                 {
                     questGiverTeleportIndex[level][TEAM_ALLIANCE].push_back(cand);
                     ++candidateCount;
                 }
-                if (forHorde)
+                if (forHorde && int32(level) >= hordeLo)
                 {
                     questGiverTeleportIndex[level][TEAM_HORDE].push_back(cand);
                     ++candidateCount;

@@ -167,6 +167,9 @@ bool IsQuestCapableDoing(Player* bot, Quest const* quest)
     if (highLevelQuest)
         return false;
 
+    if (HasKillTargetAboveBot(bot, quest))
+        return false;
+
     // Elite quest and dungeon quest etc
     if (quest->GetType() != 0)
         return false;
@@ -176,6 +179,45 @@ bool IsQuestCapableDoing(Player* bot, Quest const* quest)
         return false;
 
     return true;
+}
+
+uint32 GetHighestKillTargetLevel(Quest const* quest, FactionTemplateEntry const* playerFaction,
+                                 QuestStatusData const* progress)
+{
+    uint32 highest = 0;
+    for (uint32 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+    {
+        if (quest->RequiredNpcOrGo[i] <= 0)  // none, or a game object
+            continue;
+
+        if (progress && progress->CreatureOrGOCount[i] >= quest->RequiredNpcOrGoCount[i])
+            continue;
+
+        CreatureTemplate const* target = sObjectMgr->GetCreatureTemplate(uint32(quest->RequiredNpcOrGo[i]));
+        if (!target || target->minlevel <= highest)
+            continue;
+
+        if ((target->flags_extra & CREATURE_FLAG_EXTRA_TRIGGER) ||
+            (target->unit_flags & (UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_PC)))
+            continue;
+
+        // An objective on a friendly NPC is to help or speak to it.
+        FactionTemplateEntry const* targetFaction = sFactionTemplateStore.LookupEntry(target->faction);
+        if (!targetFaction || (playerFaction && targetFaction->IsFriendlyTo(*playerFaction)))
+            continue;
+
+        highest = target->minlevel;
+    }
+    return highest;
+}
+
+bool HasKillTargetAboveBot(Player* bot, Quest const* quest)
+{
+    QuestStatusMap const& statusMap = bot->getQuestStatusMap();
+    auto const status = statusMap.find(quest->GetQuestId());
+    QuestStatusData const* progress = status != statusMap.end() ? &status->second : nullptr;
+    uint32 const targetLevel = GetHighestKillTargetLevel(quest, bot->GetFactionTemplateEntry(), progress);
+    return int32(targetLevel) > int32(bot->GetLevel()) + QUEST_MAX_LEVELS_ABOVE_BOT;
 }
 
 ObjectGuid FindQuestGiver(PlayerbotAI* botAI, float distanceLimit)
