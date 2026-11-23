@@ -18,6 +18,8 @@ public:
     AcceptInvitationAction(PlayerbotAI* botAI) : SummonAction(botAI, "accept invitation") {}
 
     bool Execute(Event event) override;
+    // The acceptance itself; Execute queues it for the world thread.
+    bool AcceptNow();
 };
 
 #endif

@@ -25,6 +25,36 @@
 #include "WorldSession.h"
 #include "WorldSessionMgr.h"
 
+#include <functional>
+
+// A step of a bot's AI that changes other players or groups. Map threads update the maps at the same time, and a bot
+// changing an object of another map from its own map's thread raced that map's update list (Map::SendObjectUpdates
+// crash); the world thread never runs during map updates. Ported from SquidBots (Zyth45/mod-playerbots 85ac93cc).
+class WorldThreadCallOperation : public PlayerbotOperation
+{
+public:
+    WorldThreadCallOperation(ObjectGuid playerGuid, std::string name, std::function<bool(Player*)> call)
+        : _playerGuid(playerGuid), _name(std::move(name)), _call(std::move(call))
+    {
+    }
+
+    bool Execute() override
+    {
+        Player* player = ObjectAccessor::FindPlayer(_playerGuid);
+        return player && _call(player);
+    }
+
+    ObjectGuid GetBotGuid() const override { return _playerGuid; }
+    uint32 GetPriority() const override { return 50; }
+    std::string GetName() const override { return _name; }
+    bool IsValid() const override { return ObjectAccessor::FindPlayer(_playerGuid) != nullptr; }
+
+private:
+    ObjectGuid _playerGuid;
+    std::string _name;
+    std::function<bool(Player*)> _call;
+};
+
 // Group invite operation
 class GroupInviteOperation : public PlayerbotOperation
 {

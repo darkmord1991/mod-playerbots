@@ -8,12 +8,59 @@
 #include "Event.h"
 #include "ObjectAccessor.h"
 #include "PlayerbotAIConfig.h"
+#include "PlayerbotOperations.h"
 #include "PlayerbotSecurity.h"
 #include "PlayerbotTextMgr.h"
+#include "PlayerbotWorldThreadProcessor.h"
 #include "Playerbots.h"
 #include "WorldPacket.h"
 
+#include <mutex>
+#include <unordered_set>
+
+namespace
+{
+    std::mutex PendingAcceptLock;
+    std::unordered_set<ObjectGuid> PendingAccept;
+}
+
+// CMSG_GROUP_ACCEPT is a world-thread opcode: accepting from the bot's map thread made Group::Create change the
+// inviter, who may be on another map. The acceptance and what follows it run on the world thread a few milliseconds
+// later. Ported from SquidBots (Zyth45/mod-playerbots 85ac93cc).
 bool AcceptInvitationAction::Execute(Event /*event*/)
+{
+    ObjectGuid const guid = bot->GetGUID();
+    {
+        std::lock_guard<std::mutex> lock(PendingAcceptLock);
+        if (!PendingAccept.insert(guid).second)
+            return true;
+    }
+
+    auto accept = [guid](Player* player)
+    {
+        {
+            std::lock_guard<std::mutex> lock(PendingAcceptLock);
+            PendingAccept.erase(guid);
+        }
+
+        PlayerbotAI* ai = GET_PLAYERBOT_AI(player);
+        if (!ai)
+            return false;
+
+        AcceptInvitationAction action(ai);
+        return action.AcceptNow();
+    };
+
+    auto acceptOp = std::make_unique<WorldThreadCallOperation>(guid, "AcceptInvitation", std::move(accept));
+    if (PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(acceptOp)))
+        return true;
+
+    std::lock_guard<std::mutex> lock(PendingAcceptLock);
+    PendingAccept.erase(guid);
+    return false;
+}
+
+bool AcceptInvitationAction::AcceptNow()
 {
     Group* grp = bot->GetGroupInvite();
     if (!grp)

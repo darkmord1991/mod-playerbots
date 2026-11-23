@@ -43,13 +43,23 @@ bool InviteToGroupAction::Invite(Player* inviter, Player* player)
             }
     }
 
-    WorldPacket p;
-    uint32 roles_mask = 0;
-    p << player->GetName();
-    p << roles_mask;
-    inviter->GetSession()->HandleGroupInviteOpcode(p);
+    // CMSG_GROUP_INVITE is a world-thread opcode: run from a bot's map thread it changed a player of another map. It
+    // runs on the world thread, before an acceptance queued after it. Ported from SquidBots (Zyth45/mod-playerbots
+    // 85ac93cc).
+    std::string const name = player->GetName();
+    auto invite = [name](Player* from)
+    {
+        WorldPacket p;
+        uint32 rolesMask = 0;
+        p << name;
+        p << rolesMask;
+        from->GetSession()->HandleGroupInviteOpcode(p);
+        return true;
+    };
 
-    return true;
+    auto inviteOp =
+        std::make_unique<WorldThreadCallOperation>(inviter->GetGUID(), "GroupInviteOpcode", std::move(invite));
+    return PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(inviteOp));
 }
 
 bool InviteNearbyToGroupAction::Execute(Event /*event*/)
