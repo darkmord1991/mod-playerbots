@@ -1946,6 +1946,46 @@ void RandomPlayerbotMgr::Revive(Player* player)
 
 namespace
 {
+// What RandomTeleport reads of a candidate location; the same for every bot of one phase and collision height.
+struct TeleportSpot
+{
+    uint32 zoneId = 0;
+    uint32 areaId = 0;
+    bool inWater = false;
+    float ground = INVALID_HEIGHT;
+};
+
+std::mutex TeleportSpotsLock;
+std::unordered_map<std::string, TeleportSpot> TeleportSpots;  // map:x:y:z:phase:collision height -> spot
+
+// Each terrain lookup takes the target map's grid lock and may load the cell from disk, from whichever map thread the
+// bot is on; read a location once, then remember it. Ported from SquidBots (Zyth45/mod-playerbots 42df5dd4).
+TeleportSpot SpotOf(Map* map, Player* bot, float x, float y, float z)
+{
+    uint32 const phase = bot->GetPhaseMask();
+    float const height = bot->GetCollisionHeight();
+    std::string const key = std::to_string(map->GetId()) + ":" + std::to_string(x) + ":" + std::to_string(y) + ":" +
+                            std::to_string(z) + ":" + std::to_string(phase) + ":" + std::to_string(height);
+    {
+        std::lock_guard<std::mutex> guard(TeleportSpotsLock);
+        auto const it = TeleportSpots.find(key);
+        if (it != TeleportSpots.end())
+            return it->second;
+    }
+
+    TeleportSpot spot;
+    spot.zoneId = map->GetZoneId(phase, x, y, z);
+    spot.areaId = map->GetAreaId(phase, x, y, z);
+    spot.inWater = map->IsInWater(phase, x, y, z, height);
+    spot.ground = map->GetHeight(phase, x, y, z + 0.5f);
+
+    std::lock_guard<std::mutex> guard(TeleportSpotsLock);
+    if (TeleportSpots.size() > 200000)
+        TeleportSpots.clear();
+    TeleportSpots.emplace(key, spot);
+    return spot;
+}
+
 // Where a teleport to a banker arrives: the banker stands inside its bank, and every bot sent there (a quarter of the
 // level teleports, ProbTeleToBankers) stood in the bank with its home set there; SquidBots counted 49 teleports of 44
 // bots into the Stormwind bank in 25 minutes. The arrival is now the first point around the banker, ring after ring
@@ -2107,11 +2147,12 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
         if (!map)
             continue;
 
-        AreaTableEntry const* zone = sAreaTableStore.LookupEntry(map->GetZoneId(bot->GetPhaseMask(), x, y, z));
+        TeleportSpot const spot = SpotOf(map, bot, x, y, z);
+        AreaTableEntry const* zone = sAreaTableStore.LookupEntry(spot.zoneId);
         if (!zone)
             continue;
 
-        AreaTableEntry const* area = sAreaTableStore.LookupEntry(map->GetAreaId(bot->GetPhaseMask(), x, y, z));
+        AreaTableEntry const* area = sAreaTableStore.LookupEntry(spot.areaId);
         if (!area)
             continue;
 
@@ -2122,10 +2163,10 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
         if (zone->team == 2 && bot->GetTeamId() == TEAM_HORDE)
             continue;
 
-        if (map->IsInWater(bot->GetPhaseMask(), x, y, z, bot->GetCollisionHeight()))
+        if (spot.inWater)
             continue;
 
-        float ground = map->GetHeight(bot->GetPhaseMask(), x, y, z + 0.5f);
+        float ground = spot.ground;
         if (ground <= INVALID_HEIGHT)
             continue;
 
