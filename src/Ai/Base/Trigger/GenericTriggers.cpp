@@ -518,6 +518,11 @@ bool IsNotFacingTargetTrigger::IsActive()
     if (botAI->HasStrategy("stay", botAI->GetState()))
         return false;
 
+    // The movement spline rewrites the facing every update, so on the move this fired each tick above every heal and a
+    // moving healer cast nothing. Ported from SquidBots (Zyth45/mod-playerbots d2bcec66, after pengjinfei 6c6393bd).
+    if (bot->isMoving())
+        return false;
+
     return !AI_VALUE2(bool, "facing", "current target");
 }
 
