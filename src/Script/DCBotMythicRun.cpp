@@ -853,7 +853,7 @@ namespace
     std::vector<Candidate> CollectIdle()
     {
         std::vector<Candidate> out;
-        for (auto const& [guid, bot] : sRandomPlayerbotMgr.GetAllBots())
+        for (auto const& [guid, bot] : sRandomPlayerbotMgr.GetAllBotsRef())  // read only: acts after the loop
         {
             (void)guid;
             if (!IsIdle(bot))

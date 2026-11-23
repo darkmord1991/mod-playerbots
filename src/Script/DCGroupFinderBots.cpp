@@ -101,7 +101,7 @@ namespace
         // Only random bots: a player's own alt-bots belong to that player and
         // must not be dragged into a stranger's dungeon group.
         std::vector<Player*> candidates;
-        for (auto const& [guid, bot] : sRandomPlayerbotMgr.GetAllBots())
+        for (auto const& [guid, bot] : sRandomPlayerbotMgr.GetAllBotsRef())  // read only: acts after the loop
         {
             if (!bot || !sRandomPlayerbotMgr.IsRandomBot(bot))
                 continue;

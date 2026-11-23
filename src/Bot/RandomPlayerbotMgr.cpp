@@ -228,7 +228,7 @@ void RandomPlayerbotMgr::LogPlayerLocation()
 
         if (sPlayerbotAIConfig.RandomBotAutologin)
         {
-            for (auto i : GetAllBots())
+            for (auto const& i : GetAllBotsRef())  // read only: writes the location log
             {
                 Player* bot = i.second;
                 if (!bot)
@@ -402,7 +402,9 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 /*elapsed*/, bool /*minimal*/)
     GetBots();
     // Copied deliberately: ProcessBot() erases from currentBots while this is
     // being iterated below, so the loops must run over a snapshot.
-    std::unordered_set<uint32> availableBots = currentBots;
+    // A vector in the same order: one allocation per tick instead of one per bot. Ported from SquidBots
+    // (Zyth45/mod-playerbots a8317a26).
+    std::vector<uint32> const availableBots(currentBots.begin(), currentBots.end());
     uint32 availableBotCount = availableBots.size();
     uint32 onlineBotCount = playerBots.size();
 
@@ -2759,11 +2761,13 @@ bool RandomPlayerbotMgr::IsRandomBot(Player* bot)
 
 bool RandomPlayerbotMgr::IsRandomBot(ObjectGuid::LowType bot)
 {
-    ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(bot);
-    if (!sPlayerbotAIConfig.IsInRandomAccountList(sCharacterCache->GetCharacterAccountIdByGuid(guid)))
+    // The set lookup first: it is the cheapest test and rejects most callers. Ported from SquidBots
+    // (Zyth45/mod-playerbots ba909c7b).
+    if (!currentBots.contains(bot))
         return false;
 
-    return currentBots.contains(bot);
+    ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(bot);
+    return sPlayerbotAIConfig.IsInRandomAccountList(sCharacterCache->GetCharacterAccountIdByGuid(guid));
 }
 
 bool RandomPlayerbotMgr::IsAddclassBot(Player* bot)

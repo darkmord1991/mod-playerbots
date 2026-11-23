@@ -151,7 +151,11 @@ public:
     void OnPlayerLoginError(uint32 bot);
     Player* GetRandomPlayer();
     std::vector<Player*> GetPlayers() { return players; };
+    // A copy of the bot map, for a caller that logs bots in or out (or may) while it loops.
     PlayerBotMap GetAllBots() { return playerBots; };
+    // The bot map in place, for a caller that only reads it: a copy allocates one node per bot. World thread only, and
+    // nothing in the loop may log a bot in or out. Ported from SquidBots (Zyth45/mod-playerbots 28be5e5b).
+    PlayerBotMap const& GetAllBotsRef() const { return playerBots; }
     void InitArenaTeams();
     void PrintStats();
     void PrintQuestTotals(NewRpgStatistic const& stats);
