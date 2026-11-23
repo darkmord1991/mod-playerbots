@@ -5,6 +5,7 @@
  */
 
 #include "RewardAction.h"
+#include "AutoNextQuest.h"
 #include "ChatHelper.h"
 #include "Event.h"
 #include "Playerbots.h"
@@ -64,6 +65,7 @@ bool RewardAction::Reward(uint32 itemId, Object* questGiver)
                 if (itemId == pRewardItem->ItemId)
                 {
                     bot->RewardQuest(pQuest, rewardIdx, questGiver, false);
+                    TakeAutoNextQuest(bot, pQuest, questGiver);
 
                     std::string const questTitle = pQuest->GetTitle();
                     std::string const itemName = pRewardItem->Name1;
