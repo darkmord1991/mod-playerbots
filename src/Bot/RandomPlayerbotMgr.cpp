@@ -51,11 +51,15 @@
 #include "dc_update_profiler.h"
 #include <algorithm>
 #include <boost/thread/thread.hpp>
+#include <cmath>
 #include <cstdlib>
 #include <ctime>
 #include <iomanip>
+#include <mutex>
 #include <random>
 #include <set>
+#include <string>
+#include <unordered_map>
 #include <utility>
 
 namespace
@@ -1938,6 +1942,74 @@ void RandomPlayerbotMgr::Revive(Player* player)
     RandomTeleportGrindForLevel(player);
 }
 
+namespace
+{
+// Where a teleport to a banker arrives: the banker stands inside its bank, and every bot sent there (a quarter of the
+// level teleports, ProbTeleToBankers) stood in the bank with its home set there; SquidBots counted 49 teleports of 44
+// bots into the Stormwind bank in 25 minutes. The arrival is now the first point around the banker, ring after ring
+// (10 to 40 yards, 16 directions), that is outdoors, out of water, within 6 yards of the banker's floor and on the
+// terrain itself (within a yard of the map's grid, never a roof by the door). The banker's own spot when it stands
+// outdoors already or none is found (a city built on a model floor only). Once per banker spot. Ported from
+// Zyth45/mod-playerbots 42d8a337 and 22df48f7.
+std::mutex BankArrivalsLock;
+std::unordered_map<std::string, WorldLocation> BankArrivals;  // map:x:y:z of the banker -> the arrival
+
+WorldLocation BankArrival(WorldLocation const& banker)
+{
+    std::string const key = std::to_string(banker.GetMapId()) + ":" + std::to_string(banker.GetPositionX()) + ":" +
+                            std::to_string(banker.GetPositionY()) + ":" + std::to_string(banker.GetPositionZ());
+    {
+        std::lock_guard<std::mutex> guard(BankArrivalsLock);
+        auto const it = BankArrivals.find(key);
+        if (it != BankArrivals.end())
+            return it->second;
+    }
+
+    static constexpr float Rings[] = {10.0f, 15.0f, 20.0f, 25.0f, 30.0f, 35.0f, 40.0f};
+    static constexpr uint32 Directions = 16;
+    static constexpr float MaxRise = 6.0f;          // from the banker's floor
+    static constexpr float OnTerrain = 1.0f;        // over the map's grid height
+
+    WorldLocation arrival = banker;
+    if (Map* map = sMapMgr->FindMap(banker.GetMapId(), 0))
+    {
+        PositionFullTerrainStatus here;
+        map->GetFullTerrainStatusForPosition(PHASEMASK_NORMAL, banker.GetPositionX(), banker.GetPositionY(),
+                                             banker.GetPositionZ() + 0.5f, 2.0f, here);
+        bool found = here.outdoors;
+        for (float const ring : Rings)
+        {
+            for (uint32 i = 0; i < Directions && !found; ++i)
+            {
+                float const angle = 2.0f * float(M_PI) * float(i) / float(Directions);
+                float const x = banker.GetPositionX() + ring * std::cos(angle);
+                float const y = banker.GetPositionY() + ring * std::sin(angle);
+                float const z = map->GetHeight(PHASEMASK_NORMAL, x, y, banker.GetPositionZ() + 4.0f);
+                float const grid = map->GetGridHeight(x, y);
+                if (z <= INVALID_HEIGHT || grid <= INVALID_HEIGHT || std::fabs(z - banker.GetPositionZ()) > MaxRise ||
+                    z - grid > OnTerrain)
+                    continue;
+
+                PositionFullTerrainStatus there;
+                map->GetFullTerrainStatusForPosition(PHASEMASK_NORMAL, x, y, z + 0.5f, 2.0f, there);
+                if (there.outdoors && there.liquidInfo.Status == LIQUID_MAP_NO_WATER)
+                {
+                    arrival = WorldLocation(banker.GetMapId(), x, y, z, banker.GetOrientation());
+                    found = true;
+                }
+            }
+
+            if (found)
+                break;
+        }
+    }
+
+    std::lock_guard<std::mutex> guard(BankArrivalsLock);
+    BankArrivals.emplace(key, arrival);
+    return arrival;
+}
+}
+
 void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>& locs, bool hearth)
 {
     // ignore when alrdy teleported or not in the world yet.
@@ -2226,6 +2298,9 @@ void RandomPlayerbotMgr::RandomTeleportForLevel(Player* bot)
         std::vector<WorldLocation> locs = sTravelMgr.GetCityLocations(bot);
         if (!locs.empty())
         {
+            // Outdoors around the bank, not inside it (BankArrival); the home is set there too
+            for (WorldLocation& loc : locs)
+                loc = BankArrival(loc);
             RandomTeleport(bot, locs, /*hearth=*/true);
             return;
         }
