@@ -1378,6 +1378,14 @@ Playerbots.DCPerf.AiBudgetMs = 0
 # Default: 1 (enabled)
 Playerbots.DCRegainLineOfSight = 1
 
+# DarkChaos: body-pull guard in dungeon fights, ported from SquidBots (Zyth45/mod-playerbots 0847aacf + 231e50f7).
+# While a fight is on, a healer or damage dealer refuses a move that ends within an idle hostile pack's aggro distance,
+# so only the tank decides what joins the fight. A pack counts only when it would see the destination and the move
+# brings the bot closer to it than it already stands, so stepping back into line of sight stays possible. Tanks and
+# forced moves (fleeing) are exempt; out of combat nothing changes.
+# Default: 1 (enabled)
+Playerbots.DCBodyPullGuard = 1
+
 #
 #
 ####################################################################################################

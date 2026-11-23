@@ -166,6 +166,35 @@ bool MovementAction::MoveToLOS(WorldObject* target, bool ranged)
     return false;
 }
 
+// In a dungeon fight a healer or damage dealer keeps out of every pack not part of it yet: only the tank decides what
+// joins. A mob only aggroes what it sees, so a pack counts only when it would see the destination and the move brings
+// the bot closer to it than it stands now; a bot behind a wall can still step back into sight. Ported from SquidBots
+// (Zyth45/mod-playerbots 0847aacf + 231e50f7, after sksmith261 b5ba597a).
+bool MovementAction::IsBodyPullRisk(float x, float y, float z)
+{
+    if (!sPlayerbotAIConfig.DCBodyPullGuard || !bot->IsInCombat() || !bot->GetMap()->IsDungeon() ||
+        PlayerbotAI::IsTank(bot))
+        return false;
+
+    Unit* intendedTarget = AI_VALUE(Unit*, "current target");
+    for (ObjectGuid const& guid : AI_VALUE(GuidVector, "possible targets no los"))
+    {
+        Creature* creature = botAI->GetCreature(guid);
+        if (!creature || creature == intendedTarget || !creature->IsAlive() || creature->IsInCombat() ||
+            creature->HasReactState(REACT_PASSIVE) || !creature->IsHostileTo(bot))
+            continue;
+
+        float const destDist = creature->GetExactDist(x, y, z);
+        if (destDist >= creature->GetAttackDistance(bot) || destDist >= creature->GetExactDist(bot))
+            continue;
+
+        if (creature->IsWithinLOS(x, y, z))
+            return true;
+    }
+
+    return false;
+}
+
 bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle*/, bool /*react*/, bool normal_only,
                             bool exact_waypoint, MovementPriority priority, bool lessDelay, bool backwards)
 {
@@ -179,6 +208,10 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
         return false;
     }
     if (IsWaitingForLastMove(priority))
+    {
+        return false;
+    }
+    if (priority != MovementPriority::MOVEMENT_FORCED && IsBodyPullRisk(x, y, z))
     {
         return false;
     }

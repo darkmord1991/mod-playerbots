@@ -388,6 +388,8 @@ public:
     uint32 DCAiBudgetMs;
     // DarkChaos: walk back into line of sight of the target or the member to heal (Playerbots.DCRegainLineOfSight).
     bool DCRegainLineOfSight;
+    // DarkChaos: healers and damage dealers keep out of idle packs during dungeon fights (Playerbots.DCBodyPullGuard).
+    bool DCBodyPullGuard;
 
     bool FreeMethodLoot;
     int32 LootNeedRollLevel;
