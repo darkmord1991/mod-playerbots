@@ -16,7 +16,10 @@ uint8 PetitionSignsValue::Calculate()
     if (petitions.empty())
         return 0;
 
-    QueryResult result = CharacterDatabase.Query("SELECT playerguid FROM petition_sign WHERE petitionguid = {}",
-                                                 petitions.front()->GetGUID().GetCounter());
+    // Signatures are keyed by petition_id (petition_sign.petitionguid stays 0): through petition.petitionguid
+    QueryResult result = CharacterDatabase.Query(
+        "SELECT ps.playerguid FROM petition_sign ps JOIN petition p ON p.petition_id = ps.petition_id "
+        "WHERE p.petitionguid = {}",
+        petitions.front()->GetGUID().GetCounter());
     return result ? (uint8)result->GetRowCount() : 0;
 }

@@ -129,9 +129,14 @@ bool PetitionOfferAction::Execute(Event event)
     data << petitions.front()->GetGUID();
     data << guid;
 
-    QueryResult result =
-        CharacterDatabase.Query("SELECT playerguid FROM petition_sign WHERE player_account = {} AND petitionguid = {}",
-                                player->GetSession()->GetAccountId(), petitions.front()->GetGUID().GetCounter());
+    // The core writes a signature by petition_id and leaves petition_sign.petitionguid at 0 (characters update
+    // 2026_07_18_00): the charter item's guid reaches its signatures through petition.petitionguid, which the core
+    // still writes. Read by petitionguid alone, a bot saw no signature ever, offered its charter again to players who
+    // had signed it and never turned it in (ported from Zyth45/mod-playerbots 2f98fc81)
+    QueryResult result = CharacterDatabase.Query(
+        "SELECT ps.playerguid FROM petition_sign ps JOIN petition p ON p.petition_id = ps.petition_id "
+        "WHERE ps.player_account = {} AND p.petitionguid = {}",
+        player->GetSession()->GetAccountId(), petitions.front()->GetGUID().GetCounter());
     if (result)
     {
         return false;
@@ -139,8 +144,10 @@ bool PetitionOfferAction::Execute(Event event)
 
     bot->GetSession()->HandleOfferPetitionOpcode(data);
 
-    result = CharacterDatabase.Query("SELECT playerguid FROM petition_sign WHERE petitionguid = {}",
-                                     petitions.front()->GetGUID().GetCounter());
+    result = CharacterDatabase.Query(
+        "SELECT ps.playerguid FROM petition_sign ps JOIN petition p ON p.petition_id = ps.petition_id "
+        "WHERE p.petitionguid = {}",
+        petitions.front()->GetGUID().GetCounter());
     uint8 signs = result ? (uint8)result->GetRowCount() : 0;
 
     context->GetValue<uint8>("petition signs")->Set(signs);
