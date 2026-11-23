@@ -53,6 +53,17 @@ bool AggressiveTargetAction::isUseful()
     return true;
 }
 
+// A bot fighting with an enemy at hand keeps its combat engine: a healer whose target went invalid (boss submerged, add
+// killed) dropped to the non-combat engine, where it has no heal strategy, and healed nobody while its group fought on.
+// Ported from SquidBots (Zyth45/mod-playerbots bbb12faf, after pengjinfei 4511b131).
+bool DropTargetAction::isUseful()
+{
+    if (context->GetValue<Unit*>("current target")->Get())
+        return true;
+
+    return !bot->IsInCombat() || context->GetValue<GuidVector>("attackers")->Get().empty();
+}
+
 bool DropTargetAction::Execute(Event /*event*/)
 {
     Unit* target = context->GetValue<Unit*>("current target")->Get();
@@ -75,7 +86,9 @@ bool DropTargetAction::Execute(Event /*event*/)
 
     bot->SetTarget(ObjectGuid::Empty);
     bot->SetSelection(ObjectGuid());
-    botAI->ChangeEngine(BOT_STATE_NON_COMBAT);
+    if (!bot->IsInCombat() || context->GetValue<GuidVector>("attackers")->Get().empty())
+        botAI->ChangeEngine(BOT_STATE_NON_COMBAT);
+
     if (bot->getClass() == CLASS_HUNTER) // Check for Hunter Class
     {
         Spell const* spell = bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL); // Get the current spell being cast by the bot

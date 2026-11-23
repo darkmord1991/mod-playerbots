@@ -1681,6 +1681,13 @@ void PlayerbotAI::DoNextAction(bool min)
         {
             aiObjectContext->GetValue<Unit*>("current target")->Set(nullptr);
         }
+
+        // An enemy at hand: back to the combat engine, where the heal and fight strategies live (DropTargetAction).
+        if (!aiObjectContext->GetValue<GuidVector>("attackers")->Get().empty())
+        {
+            ChangeEngine(BOT_STATE_COMBAT);
+            return;
+        }
     }
 
     if (!bot->IsInCombat() && GetMSTimeDiffToNow(hangingCheckedAt) >= 10000)
