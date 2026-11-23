@@ -1037,6 +1037,15 @@ private:
 
         return empty;
     }
+    // The entry of exactly this level, or none. Never inserts, unlike operator[] (map threads). Ported from SquidBots
+    // (Zyth45/mod-playerbots 8f585424).
+    template <class T>
+    static std::vector<T> const& FindLevelCacheEntry(std::map<uint8, std::vector<T>> const& cache, uint8 level)
+    {
+        static std::vector<T> const empty;
+        auto const itr = cache.find(level);
+        return itr != cache.end() ? itr->second : empty;
+    }
     // One (quest, giver-spawn) pair a bot might accept. Static fields are pre-extracted so
     // GetValidQuestGiverLocations can early-exit on level/race/class without touching the Quest.
     struct QuestGiverTeleportCandidate

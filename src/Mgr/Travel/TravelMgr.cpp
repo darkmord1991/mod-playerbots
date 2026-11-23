@@ -4546,8 +4546,12 @@ std::vector<WorldLocation> TravelMgr::GetCityLocations(Player* bot)
     uint32 level = bot->GetLevel();
     TeamId botTeamId = bot->GetTeamId();
 
+    // Exact level: above the stock cap a level without bankers of the bot's zone level means no bank at all.
+    std::vector<BankerLocation> const& levelBankers =
+        FindLevelCacheEntry(bankerLocsPerLevelCache, static_cast<uint8>(level));
+
     std::vector<WorldLocation> fallbackLocations;
-    for (auto& bLoc : bankerLocsPerLevelCache[level])
+    for (auto const& bLoc : levelBankers)
         if (botTeamId == TEAM_ALLIANCE ? bLoc.forAlliance : bLoc.forHorde)
             fallbackLocations.push_back(bLoc.loc);
 
@@ -4555,7 +4559,7 @@ std::vector<WorldLocation> TravelMgr::GetCityLocations(Player* bot)
         return fallbackLocations;
 
     std::unordered_set<uint32> validBankerCities;
-    for (auto& loc : bankerLocsPerLevelCache[level])
+    for (auto const& loc : levelBankers)
     {
         Capital const* capital = FindCapitalByBanker(loc.entry);
         if (!capital)
