@@ -4859,6 +4859,42 @@ std::vector<uint32> const& TravelMgr::GetQuestZones(uint32 questId) const
     return itr != questZones.end() ? itr->second : none;
 }
 
+namespace
+{
+// A grind spot is left out when a monster this many levels above its mobs stands within that monster's aggro
+// range of it, plus how far a grinding bot strays from the spot centre.
+constexpr uint32 GRIND_THREAT_LEVEL_GAP = 8;
+constexpr float GRIND_THREAT_ROAM_DISTANCE = 15.0f;
+constexpr float GRIND_THREAT_CELL = 64.0f;  // >= MAX_AGGRO_RADIUS + roam, so the 8 neighbour cells suffice
+
+struct GrindThreat
+{
+    float x;
+    float y;
+    float z;
+    uint32 phaseMask;
+    uint32 level;
+    float detectionRange;  // aggro radius against its own level, see Creature::GetAggroRange
+};
+
+// A monster that attacks a player who comes close.
+bool IsGrindThreat(CreatureTemplate const* creatureTemplate)
+{
+    if (creatureTemplate->npcflag ||
+        (creatureTemplate->flags_extra & (CREATURE_FLAG_EXTRA_TRIGGER | CREATURE_FLAG_EXTRA_CIVILIAN)) ||
+        (creatureTemplate->unit_flags & (UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_PC)))
+        return false;
+
+    FactionTemplateEntry const* faction = sFactionTemplateStore.LookupEntry(creatureTemplate->faction);
+    return faction && faction->IsHostileToPlayers();
+}
+
+int32 GrindThreatCell(float coord)
+{
+    return static_cast<int32>(std::floor(coord / GRIND_THREAT_CELL));
+}
+}  // namespace
+
 void TravelMgr::PrepareDestinationCache()
 {
     uint32 maxLevel = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
@@ -4908,6 +4944,8 @@ void TravelMgr::PrepareDestinationCache()
     std::map<std::tuple<uint16, int32, int32, int32, uint32>, std::vector<CreatureData>> tempLocsCache;
     // Temporary map to group creatures by entry and area
     std::map<uint32, std::map<uint32, std::vector<WorldLocation>>> tempCreatureCache;
+    // DarkChaos: monsters that start a fight, by map and GRIND_THREAT_CELL square, for the spot loop below.
+    std::map<std::tuple<uint16, int32, int32>, std::vector<GrindThreat>> grindThreats;
     for (auto const& [guid, creatureData] : sObjectMgr->GetAllCreatureData())
     {
         CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureData.id);
@@ -4954,6 +4992,10 @@ void TravelMgr::PrepareDestinationCache()
                 AddQuestZone(itr->second, spawnZone);
             }
         }
+
+        if (IsGrindThreat(creatureTemplate))
+            grindThreats[std::make_tuple(mapId, GrindThreatCell(x), GrindThreatCell(y))].push_back(
+                {x, y, z, creatureData.phaseMask, creatureTemplate->minlevel, creatureTemplate->detection_range});
 
         // CREATURES
         if (creatureTemplate->npcflag == 0 &&
@@ -5144,6 +5186,34 @@ void TravelMgr::PrepareDestinationCache()
                  "hubs use the table zone, quests count for both.",
                  std::get<0>(key), count, std::get<1>(key), std::get<2>(key));
 
+    // DarkChaos: a spot within aggro range of a monster far above its mobs gets its bots pulled and killed (stock
+    // creatures placed on the custom maps keep their stock level, so such neighbours are common there).
+    auto const isNextToHigherThreat = [&grindThreats](uint16 mapId, WorldLocation const& pos, uint32 phaseMask,
+                                                      uint32 spotLevel)
+    {
+        int32 const cellX = GrindThreatCell(pos.GetPositionX());
+        int32 const cellY = GrindThreatCell(pos.GetPositionY());
+        for (int32 cell = 0; cell < 9; ++cell)  // the 3x3 cells around pos
+        {
+            auto const itr = grindThreats.find(std::make_tuple(mapId, cellX + cell % 3 - 1, cellY + cell / 3 - 1));
+            if (itr == grindThreats.end())
+                continue;
+
+            auto const threatens = [&pos, phaseMask, spotLevel](GrindThreat const& threat)
+            {
+                if (!(threat.phaseMask & phaseMask) || threat.level < spotLevel + GRIND_THREAT_LEVEL_GAP)
+                    return false;
+
+                float const aggro = std::min(threat.detectionRange + float(threat.level - spotLevel), MAX_AGGRO_RADIUS);
+                return pos.GetExactDist(threat.x, threat.y, threat.z) <= aggro + GRIND_THREAT_ROAM_DISTANCE;
+            };
+            if (std::any_of(itr->second.begin(), itr->second.end(), threatens))
+                return true;
+        }
+        return false;
+    };
+    std::map<uint16, uint32> threatenedSpots;  // map -> grind spots left out
+
     // Process temporary caches
     for (auto const& [gridTuple, creatureDataList] : tempLocsCache)
     {
@@ -5159,6 +5229,12 @@ void TravelMgr::PrepareDestinationCache()
 
             // A real spawn, not the grid key * 50, which can be up to 25 yd in the air or underground.
             GrindSpot const spot{WorldPosition(spawns, WP_MEAN_CENTROID), std::get<4>(gridTuple)};
+            if (isNextToHigherThreat(std::get<0>(gridTuple), spot.loc, spot.phaseMask, level))
+            {
+                ++threatenedSpots[std::get<0>(gridTuple)];
+                continue;
+            }
+
             for (int32 l = (int32)level - (int32)sPlayerbotAIConfig.RandomBotTeleLowerLevel;
                  l <= (int32)level + (int32)sPlayerbotAIConfig.RandomBotTeleHigherLevel; l++)
             {
@@ -5169,6 +5245,11 @@ void TravelMgr::PrepareDestinationCache()
             }
         }
     }
+    for (auto const& [mapId, count] : threatenedSpots)
+        LOG_INFO("playerbots",
+                 "Grind spots: map {}: left out {} within aggro range of a monster {}+ levels above them.", mapId,
+                 count, GRIND_THREAT_LEVEL_GAP);
+
     for (auto const& [entry, areaMap] : tempCreatureCache)
     {
         for (auto const& [area, locList] : areaMap)
