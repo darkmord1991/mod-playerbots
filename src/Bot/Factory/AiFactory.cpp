@@ -290,7 +290,9 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
     if (!player->InBattleground())
         engine->addStrategiesNoInit("racials", "chat", "default", "cast time", "potions", "duel", "boost", nullptr);
 
-    if (sPlayerbotAIConfig.AutoAvoidAoe && facade->HasGameClientMaster())
+    // A grouped bot steps out of ground effects too, not only one a real player leads: in bot-only dungeon runs bots
+    // stood in boss ground effects. Ported from SquidBots (Zyth45/mod-playerbots 6d876335).
+    if (sPlayerbotAIConfig.AutoAvoidAoe && (facade->HasGameClientMaster() || player->GetGroup()))
         engine->addStrategy("avoid aoe", false);
 
     engine->addStrategy("formation", false);
