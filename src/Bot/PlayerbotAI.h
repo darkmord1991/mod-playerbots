@@ -24,8 +24,10 @@
 #include "SpellAuras.h"
 #include "Util.h"
 #include "WorldPacket.h"
+#include <mutex>
 #include <stack>
 #include <unordered_set>
+#include <vector>
 
 class Action;
 class AiObjectContext;
@@ -369,6 +371,9 @@ public:
 
 private:
     std::map<uint16, std::string> handlers;
+    // Packets also arrive from other threads (dungeon finder update, players on other maps). Ported from SquidBots
+    // (Zyth45/mod-playerbots d82e32be).
+    std::mutex _queueLock;
     std::stack<WorldPacket> queue;
 };
 
@@ -424,6 +429,7 @@ public:
     void HandleCommand(uint32 type, std::string const text, Player* fromPlayer);
     void QueueChatResponse(const ChatQueuedReply reply);
     void HandleBotOutgoingPacket(WorldPacket const& packet);
+    void HearChat(WorldPacket const& packet);
     void HandleMasterIncomingPacket(WorldPacket const& packet);
     void HandleMasterOutgoingPacket(WorldPacket const& packet);
     // Whether any bot reacts to this opcode from or to its master. PlayerbotMgr asks before walking every
@@ -701,6 +707,10 @@ protected:
     ChatHelper chatHelper;
     std::list<ChatCommandHolder> chatCommands;
     std::list<ChatQueuedReply> chatReplies;
+    // Chat heard on another thread, read in the bot's own update (HearChat).
+    static constexpr std::size_t MAX_HEARD_CHAT = 32;
+    std::mutex _heardChatLock;
+    std::vector<WorldPacket> _heardChat;
     PacketHandlingHelper botOutgoingPacketHandlers;
     PacketHandlingHelper masterIncomingPacketHandlers;
     PacketHandlingHelper masterOutgoingPacketHandlers;

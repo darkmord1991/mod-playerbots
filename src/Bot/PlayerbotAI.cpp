@@ -106,10 +106,17 @@ void PacketHandlingHelper::AddHandler(uint16 opcode, std::string const handler) 
 
 void PacketHandlingHelper::Handle(ExternalEventHelper& helper)
 {
-    while (!queue.empty())
+    for (;;)
     {
-        WorldPacket packet = queue.top();
-        queue.pop(); // remove first so handling can't modify the queue while we're using it
+        WorldPacket packet;
+        {
+            std::lock_guard<std::mutex> lock(_queueLock);
+            if (queue.empty())
+                return;
+
+            packet = std::move(queue.top());
+            queue.pop(); // remove first so handling can't modify the queue while we're using it
+        }
 
         helper.HandlePacket(handlers, packet);
     }
@@ -123,7 +130,10 @@ void PacketHandlingHelper::AddPacket(WorldPacket const& packet)
     // assert(packet);
     // assert(packet.GetOpcode());
     if (handlers.find(packet.GetOpcode()) != handlers.end())
+    {
+        std::lock_guard<std::mutex> lock(_queueLock);
         queue.push(WorldPacket(packet));
+    }
 }
 
 namespace
@@ -619,6 +629,14 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
     }
 
     ExternalEventHelper helper(aiObjectContext);
+
+    std::vector<WorldPacket> heard;
+    {
+        std::lock_guard<std::mutex> lock(_heardChatLock);
+        heard.swap(_heardChat);
+    }
+    for (WorldPacket const& packet : heard)
+        HearChat(packet);
 
     // chat replies
     for (auto it = chatReplies.begin(); it != chatReplies.end();)
@@ -1263,6 +1281,117 @@ void PlayerbotAI::HandleCommand(uint32 type, std::string const text, Player* fro
     }
 }
 
+// Chat reaches a bot on the thread of whoever spoke, often another map's, so HandleBotOutgoingPacket only keeps the
+// packet and the bot reads it here, in its own update. Ported from SquidBots (Zyth45/mod-playerbots 7dce23de).
+void PlayerbotAI::HearChat(WorldPacket const& packet)
+{
+    if (!AllowActivity())
+        return;
+
+    WorldPacket p(packet);
+    if (p.empty() || (p.GetOpcode() != SMSG_MESSAGECHAT && p.GetOpcode() != SMSG_GM_MESSAGECHAT))
+        return;
+
+    p.rpos(0);
+    uint8 msgtype, chatTag;
+    uint32 lang, textLen, unused;
+    ObjectGuid guid1, guid2;
+    std::string name = "";
+    std::string chanName = "";
+    std::string message = "";
+
+    p >> msgtype >> lang;
+    p >> guid1 >> unused;
+    if (guid1.IsEmpty() || p.size() > p.DEFAULT_SIZE)
+        return;
+
+    if (lang == LANG_ADDON)
+        return;
+
+    if (p.GetOpcode() == SMSG_GM_MESSAGECHAT)
+    {
+        p >> textLen;
+        p >> name;
+    }
+
+    switch (msgtype)
+    {
+        case CHAT_MSG_CHANNEL:
+            p >> chanName;
+            [[fallthrough]];
+        case CHAT_MSG_SAY:
+        case CHAT_MSG_PARTY:
+        case CHAT_MSG_YELL:
+        case CHAT_MSG_WHISPER:
+        case CHAT_MSG_GUILD:
+            p >> guid2;
+            p >> textLen >> message >> chatTag;
+            break;
+        default:
+            return;
+    }
+
+    if (chanName == "World")
+        return;
+
+    // do not reply to self but always try to reply to real player
+    if (guid1 == bot->GetGUID())
+        return;
+
+    time_t lastChat = GetAiObjectContext()->GetValue<time_t>("last said", "chat")->Get();
+    bool isPaused = time(0) < lastChat;
+    bool isFromFreeBot = false;
+    sCharacterCache->GetCharacterNameByGuid(guid1, name);
+    uint32 accountId = sCharacterCache->GetCharacterAccountIdByGuid(guid1);
+    isFromFreeBot = sPlayerbotAIConfig.IsInRandomAccountList(accountId);
+    bool isMentioned = message.find(bot->GetName()) != std::string::npos;
+
+    // random bot speaks, chat CD
+    if (isFromFreeBot && isPaused)
+        return;
+
+    // BG: react only if mentioned or if not channel and real player spoke
+    if (bot->InBattleground() && !(isMentioned || (msgtype != CHAT_MSG_CHANNEL && !isFromFreeBot)))
+        return;
+
+    if (HasGameClientMaster() && guid1 != GetMaster()->GetGUID())
+        return;
+
+    auto itemIds = GetChatHelper()->ExtractAllItemIds(message);
+    if (message.starts_with(sPlayerbotAIConfig.ToxicLinksPrefix) &&
+        (itemIds.size() > 0 || GetChatHelper()->ExtractAllQuestIds(message).size() > 0) &&
+        sPlayerbotAIConfig.ToxicLinksRepliesChance)
+    {
+        if (urand(0, 50) > 0 || urand(1, 100) > sPlayerbotAIConfig.ToxicLinksRepliesChance)
+            return;
+    }
+    else if (itemIds.count(19019) && sPlayerbotAIConfig.ThunderfuryRepliesChance)
+    {
+        if (urand(0, 60) > 0 || urand(1, 100) > sPlayerbotAIConfig.ThunderfuryRepliesChance)
+            return;
+    }
+    else
+    {
+        if (isFromFreeBot && urand(0, 20))
+            return;
+
+        if (!isFromFreeBot)
+        {
+            if (!isMentioned && urand(0, 4))
+                return;
+        }
+        else
+        {
+            if (urand(0, 20 + 10 * isMentioned))
+                return;
+        }
+    }
+
+    QueueChatResponse(ChatQueuedReply{msgtype, guid1.GetCounter(), guid2.GetCounter(), message, chanName, name,
+                                      time(nullptr) + urand(inCombat ? 10 : 5, inCombat ? 25 : 15)});
+    GetAiObjectContext()->GetValue<time_t>("last said", "chat")->Set(time(0) + urand(5, 25));
+}
+
 void PlayerbotAI::HandleBotOutgoingPacket(WorldPacket const& packet)
 {
     if (packet.empty())
@@ -1314,124 +1443,14 @@ void PlayerbotAI::HandleBotOutgoingPacket(WorldPacket const& packet)
 
             return;
         }
-        case SMSG_MESSAGECHAT:  // do not react to self or if not ready to reply
+        case SMSG_MESSAGECHAT:  // heard in the bot's own update, see HearChat
         {
             if (!sPlayerbotAIConfig.RandomBotTalk)
                 return;
 
-            if (!AllowActivity())
-                return;
-
-            WorldPacket p(packet);
-            if (!p.empty() && (p.GetOpcode() == SMSG_MESSAGECHAT || p.GetOpcode() == SMSG_GM_MESSAGECHAT))
-            {
-                p.rpos(0);
-                uint8 msgtype, chatTag;
-                uint32 lang, textLen, unused;
-                ObjectGuid guid1, guid2;
-                std::string name = "";
-                std::string chanName = "";
-                std::string message = "";
-
-                p >> msgtype >> lang;
-                p >> guid1 >> unused;
-                if (guid1.IsEmpty() || p.size() > p.DEFAULT_SIZE)
-                    return;
-
-                if (lang == LANG_ADDON)
-                        return;
-
-                if (p.GetOpcode() == SMSG_GM_MESSAGECHAT)
-                {
-                    p >> textLen;
-                    p >> name;
-                }
-
-                switch (msgtype)
-                {
-                    case CHAT_MSG_CHANNEL:
-                        p >> chanName;
-                        [[fallthrough]];
-                    case CHAT_MSG_SAY:
-                    case CHAT_MSG_PARTY:
-                    case CHAT_MSG_YELL:
-                    case CHAT_MSG_WHISPER:
-                    case CHAT_MSG_GUILD:
-                        p >> guid2;
-                        p >> textLen >> message >> chatTag;
-                        break;
-                    default:
-                        return;
-                }
-
-                if (chanName == "World")
-                    return;
-
-                // do not reply to self but always try to reply to real player
-                if (guid1 != bot->GetGUID())
-                {
-                    time_t lastChat = GetAiObjectContext()->GetValue<time_t>("last said", "chat")->Get();
-                    bool isPaused = time(0) < lastChat;
-                    bool isFromFreeBot = false;
-                    sCharacterCache->GetCharacterNameByGuid(guid1, name);
-                    uint32 accountId = sCharacterCache->GetCharacterAccountIdByGuid(guid1);
-                    isFromFreeBot = sPlayerbotAIConfig.IsInRandomAccountList(accountId);
-                    bool isMentioned = message.find(bot->GetName()) != std::string::npos;
-
-                    // ChatChannelSource chatChannelSource = GetChatChannelSource(bot, msgtype, chanName);
-
-                    // random bot speaks, chat CD
-                    if (isFromFreeBot && isPaused)
-                        return;
-
-                    // BG: react only if mentioned or if not channel and real player spoke
-                    if (bot->InBattleground() && !(isMentioned || (msgtype != CHAT_MSG_CHANNEL && !isFromFreeBot)))
-                        return;
-
-                    if (HasGameClientMaster() && guid1 != GetMaster()->GetGUID())
-                        return;
-
-                    auto itemIds = GetChatHelper()->ExtractAllItemIds(message);
-                    if (message.starts_with(sPlayerbotAIConfig.ToxicLinksPrefix) &&
-                        (itemIds.size() > 0 || GetChatHelper()->ExtractAllQuestIds(message).size() > 0) &&
-                        sPlayerbotAIConfig.ToxicLinksRepliesChance)
-                    {
-                        if (urand(0, 50) > 0 || urand(1, 100) > sPlayerbotAIConfig.ToxicLinksRepliesChance)
-                            return;
-                    }
-                    else if (itemIds.count(19019) && sPlayerbotAIConfig.ThunderfuryRepliesChance)
-                    {
-                        if (urand(0, 60) > 0 || urand(1, 100) > sPlayerbotAIConfig.ThunderfuryRepliesChance)
-                            return;
-                    }
-                    else
-                    {
-                        if (isFromFreeBot && urand(0, 20))
-                            return;
-
-                        // if (msgtype == CHAT_MSG_GUILD && (!sPlayerbotAIConfig.GuildRepliesRate || urand(1, 100) >=
-                        // sPlayerbotAIConfig.GuildRepliesRate)) return;
-
-                        if (!isFromFreeBot)
-                        {
-                            if (!isMentioned && urand(0, 4))
-                                return;
-                        }
-                        else
-                        {
-                            if (urand(0, 20 + 10 * isMentioned))
-                                return;
-                        }
-                    }
-
-                    QueueChatResponse(ChatQueuedReply{msgtype, guid1.GetCounter(), guid2.GetCounter(), message,
-                                                      chanName, name,
-                                                      time(nullptr) + urand(inCombat ? 10 : 5, inCombat ? 25 : 15)});
-                    GetAiObjectContext()->GetValue<time_t>("last said", "chat")->Set(time(0) + urand(5, 25));
-                    return;
-                }
-            }
-
+            std::lock_guard<std::mutex> lock(_heardChatLock);
+            if (_heardChat.size() < MAX_HEARD_CHAT)
+                _heardChat.push_back(packet);
             return;
         }
         case SMSG_FORCE_MOVE_ROOT:      // CMSG_FORCE_MOVE_ROOT_ACK
