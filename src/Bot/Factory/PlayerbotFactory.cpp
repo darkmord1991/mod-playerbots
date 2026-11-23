@@ -3753,7 +3753,8 @@ void PlayerbotFactory::InitAvailableSpells()
                 continue;
 
             if (trainer->GetTrainerType() != Trainer::Type::Tradeskill &&
-                trainer->GetTrainerType() != Trainer::Type::Class)
+                trainer->GetTrainerType() != Trainer::Type::Class &&
+                trainer->GetTrainerType() != Trainer::Type::Mount)
                 continue;
 
             if (trainer->GetTrainerType() == Trainer::Type::Class &&
@@ -3768,6 +3769,11 @@ void PlayerbotFactory::InitAvailableSpells()
     for (uint32 trainerId : trainerIds)
     {
         Trainer::Trainer* trainer = sObjectMgr->GetTrainer(trainerId);
+        bool const isRidingTrainer = trainer->GetTrainerType() == Trainer::Type::Mount;
+
+        // The cache is per class; racial riding trainers are filtered here.
+        if (isRidingTrainer && !trainer->IsTrainerValidForPlayer(bot))
+            continue;
 
         for (auto& spell : trainer->GetSpells())
         {
@@ -3776,6 +3782,17 @@ void PlayerbotFactory::InitAvailableSpells()
             Trainer::Spell const* trainerSpell = trainer->GetSpell(spell.SpellId);
             if (!trainerSpell)
                 continue;
+
+            // Riding trainers: only the extra passives (Cold Weather Flying, the DarkChaos map flight
+            // licenses), which then come at the trainer's level and riding requirement. Riding ranks stay
+            // with InitSkills, which follows the Use*MountAtMinLevel config.
+            if (isRidingTrainer)
+            {
+                SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(trainerSpell->SpellId);
+                if (!spellInfo || !spellInfo->IsPassive() || spellInfo->HasEffect(SPELL_EFFECT_SKILL) ||
+                    trainerSpell->IsCastable())
+                    continue;
+            }
 
             if (!IsTrainerSpellAllowedForBot(bot, trainer, trainerSpell))
                 continue;

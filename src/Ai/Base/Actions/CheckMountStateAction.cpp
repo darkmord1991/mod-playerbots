@@ -19,7 +19,6 @@
 #include "ServerFacade.h"
 #include "SpellAuraEffects.h"
 
-static constexpr uint32 SPELL_COLD_WEATHER_FLYING = 54197;
 static constexpr float PARACHUTE_LAND_THRESHOLD = 15.0f;
 
 // Preferred mounts per bot, loaded once at startup by LoadPreferredMounts()
@@ -496,22 +495,23 @@ bool CheckMountStateAction::ShouldDismountForMaster(Player* master) const
     return !isMasterMounted && bot->IsMounted();
 }
 
-static bool BotCanUseFlyingMount(Player const* bot)
+static bool BotCanUseFlyingMount(Player* bot)
 {
     if (bot->GetPureSkillValue(SKILL_RIDING) < 225)
         return false;
 
+    // Same lookup order as SpellInfo::CheckLocation: area row first, zone row as fallback.
     AreaTableEntry const* area = sAreaTableStore.LookupEntry(bot->GetAreaId());
+    if (!area)
+        area = sAreaTableStore.LookupEntry(bot->GetZoneId());
     if (!area || !area->IsFlyable())
         return false;
     if (area->flags & AREA_FLAG_NO_FLY_ZONE)
         return false;
 
-    uint32 const vmap = GetVirtualMapForMapAndZone(bot->GetMapId(), bot->GetZoneId());
-    if (vmap == MAP_NORTHREND && !bot->HasSpell(SPELL_COLD_WEATHER_FLYING))
-        return false;
-
-    return true;
+    // Cold Weather Flying in Northrend plus every server-side rule hooked into the core
+    // (DarkChaos map flight licenses for maps 750/751).
+    return bot->canFlyInZone(bot->GetMapId(), bot->GetZoneId(), nullptr);
 }
 
 int32 CheckMountStateAction::CalculateMasterMountSpeed(Player* master) const
