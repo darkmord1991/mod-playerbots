@@ -35,7 +35,75 @@
 #include "SessionScript.h"
 #include "SpellInfo.h"
 #include "WorldScript.h"
+#include "GameTime.h"
+#include "Group.h"
+#include "Map.h"
+#include "PerfMonitor.h"
 #include "cmath"
+#include <chrono>
+
+namespace
+{
+    // Playerbots.DCPerf.AiBudgetMs. In SquidBots' peak study 96% of map update peaks were the sum of 1,400-1,500 bot
+    // updates on one continent thread, none above 10-15 ms. Ported from SquidBots (Zyth45/mod-playerbots 7fdc9687).
+    // A tick is (map, game time); a map is updated by one thread, so the running total is per thread.
+    struct AiBudgetTick
+    {
+        Map const* map = nullptr;
+        uint64 at = 0;
+        uint64 spentUs = 0;
+    };
+    thread_local AiBudgetTick CurrentAiBudgetTick;
+
+    AiBudgetTick& GetAiBudgetTick(Player* bot)
+    {
+        Map const* map = bot->GetMap();
+        uint64 const at = GameTime::GetGameTimeMS().count();
+        if (CurrentAiBudgetTick.map != map || CurrentAiBudgetTick.at != at)
+            CurrentAiBudgetTick = { map, at, 0 };
+
+        return CurrentAiBudgetTick;
+    }
+
+    bool InGroupWithRealPlayer(Player* bot)
+    {
+        Group* group = bot->GetGroup();
+        if (!group)
+            return false;
+
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (member && member != bot && !GET_PLAYERBOT_AI(member))
+                return true;
+        }
+
+        return false;
+    }
+
+    // Over the map's budget a bot skips its AI this tick, unless it skipped the last one, fights, or is with or near a
+    // real player.
+    bool SkipAiForBudget(Player* bot, PlayerbotAI* botAI)
+    {
+        if (!sPlayerbotAIConfig.DCAiBudgetMs || !bot->GetMap())
+            return false;
+
+        if (GetAiBudgetTick(bot).spentUs < uint64(sPlayerbotAIConfig.DCAiBudgetMs) * 1000)
+        {
+            botAI->AiBudgetSkipped = false;
+            return false;
+        }
+
+        bool const skip = !botAI->AiBudgetSkipped && !bot->IsInCombat() && !InGroupWithRealPlayer(bot) &&
+                          !botAI->HasPlayerNearby(100.0f);
+        botAI->AiBudgetSkipped = skip;
+        if (skip)
+            if (PerfMonitorOperation* pmo = sPerfMonitor.start(PERF_MON_TOTAL, "DCPerf::AiBudgetSkip"))
+                pmo->finish();
+
+        return skip;
+    }
+}
 
 class PlayerbotsDatabaseScript : public DatabaseScript
 {
@@ -254,9 +322,24 @@ public:
     {
         PlayerbotAI* const botAI = PlayerbotsMgr::instance().GetPlayerbotAI(player);
 
-        if (botAI != nullptr)
+        if (botAI != nullptr && SkipAiForBudget(player, botAI))
+            botAI->AiBudgetWaitMs += diff;
+        else if (botAI != nullptr)
         {
-            botAI->UpdateAI(diff);
+            uint32 const elapsed = diff + botAI->AiBudgetWaitMs;
+            botAI->AiBudgetWaitMs = 0;
+
+            if (sPlayerbotAIConfig.DCAiBudgetMs)
+            {
+                auto const aiStart = std::chrono::steady_clock::now();
+                botAI->UpdateAI(elapsed);
+                if (player->GetMap())
+                    GetAiBudgetTick(player).spentUs += uint64(std::chrono::duration_cast<std::chrono::microseconds>(
+                                                                  std::chrono::steady_clock::now() - aiStart)
+                                                                  .count());
+            }
+            else
+                botAI->UpdateAI(elapsed);
         }
 
         if (PlayerbotMgr* playerbotMgr = GET_PLAYERBOT_MGR(player))

@@ -1357,6 +1357,20 @@ Playerbots.botActiveAloneSmartScaleDiffLimitCeiling = 200
 Playerbots.botActiveAloneSmartScaleWhenMinLevel = 1
 Playerbots.botActiveAloneSmartScaleWhenMaxLevel = 80
 
+# DarkChaos performance switches, ported from SquidBots (Zyth45/mod-playerbots). Both change how often idle bots
+# think, so measure them (Map.Update times, PerfMon) before keeping them on.
+#
+# DCPerf.SlowIdleTriggers - out of combat, a bot that only the BotActiveAlone rotation keeps active (no real player
+#   near, no group with one, no queue, not in an instance) checks its triggers of relevance under 100 at most once a
+#   second instead of on every AI pass. Combat and bots near real players are not touched.
+# DCPerf.AiBudgetMs - a time budget, in milliseconds, for the bots' AI per map tick. Once the bots of a map have spent
+#   it, the next ones skip their AI for that tick and catch up on the next (none skips two ticks in a row). Never
+#   skipped: in combat, grouped with a real player, or within 100 yards of one. 0 turns it off; try 40.
+#
+# Default: SlowIdleTriggers 0, AiBudgetMs 0
+Playerbots.DCPerf.SlowIdleTriggers = 0
+Playerbots.DCPerf.AiBudgetMs = 0
+
 #
 #
 ####################################################################################################

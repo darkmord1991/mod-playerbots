@@ -454,6 +454,12 @@ void Engine::ProcessTriggers(bool minimal)
 {
     std::unordered_map<Trigger*, Event> fires;
     uint32 now = getMSTime();
+    // Out of combat, a bot that only the activity rotation keeps going checks its low-relevance triggers once a second
+    // (PerfMon at 3,000 bots: 12.4% of bot AI time went to such checks). Ported from SquidBots (Zyth45/mod-playerbots
+    // f62580cd).
+    Player* const self = botAI ? botAI->GetBot() : nullptr;
+    bool const slowIdle = sPlayerbotAIConfig.DCSlowIdleTriggers && self && !self->IsInCombat() &&
+                          botAI->GetState() == BOT_STATE_NON_COMBAT && !botAI->IsForcedActive();
     for (std::vector<TriggerNode*>::iterator i = triggers.begin(); i != triggers.end(); i++)
     {
         TriggerNode* node = *i;
@@ -477,6 +483,14 @@ void Engine::ProcessTriggers(bool minimal)
         {
             if (minimal && node->getFirstRelevance() < 100)
                 continue;
+
+            if (slowIdle && node->getFirstRelevance() < 100)
+            {
+                if (trigger->LastSlowCheck && getMSTimeDiff(trigger->LastSlowCheck, now) < IN_MILLISECONDS)
+                    continue;
+
+                trigger->LastSlowCheck = now;
+            }
 
             PerfMonitorOperation* pmo =
                 sPerfMonitor.start(PERF_MON_TRIGGER, trigger->getName(), &aiObjectContext->performanceStack);

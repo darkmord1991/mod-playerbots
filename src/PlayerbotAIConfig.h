@@ -383,6 +383,9 @@ public:
     uint32 BotActiveAloneSmartScaleDiffLimitCeiling;
     uint32 BotActiveAloneSmartScaleWhenMinLevel;
     uint32 BotActiveAloneSmartScaleWhenMaxLevel;
+    // DarkChaos: idle-bot cost switches (Playerbots.DCPerf.*), see playerbots.conf.dist.
+    bool DCSlowIdleTriggers;
+    uint32 DCAiBudgetMs;
 
     bool FreeMethodLoot;
     int32 LootNeedRollLevel;

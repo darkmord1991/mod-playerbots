@@ -4899,6 +4899,10 @@ bool PlayerbotAI::AllowActive(ActivityType activityType)
     if (activityType == PACKET_ACTIVITY)
         return true;
 
+    // Forced active unless only the rotation below keeps the bot going.
+    if (activityType == ALL_ACTIVITY)
+        _forcedActive = true;
+
     // all bots forced active, no rotation or scaling needed
     if (sPlayerbotAIConfig.BotActiveAlone >= 100 && !sPlayerbotAIConfig.BotActiveAloneSmartScale)
         return true;
@@ -5045,6 +5049,9 @@ bool PlayerbotAI::AllowActive(ActivityType activityType)
                 return true;
         }
     }
+
+    if (activityType == ALL_ACTIVITY)
+        _forcedActive = false;
 
     // pathfinding only runs for bots forced active by the rules above —
     // skip it for bots that would only be active via random rotation

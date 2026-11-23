@@ -38,6 +38,9 @@ public:
 
     bool needCheck(uint32 now);
 
+    // Last check while throttled by Playerbots.DCPerf.SlowIdleTriggers (Engine::ProcessTriggers).
+    uint32_t LastSlowCheck = 0;
+
 protected:
     int32_t checkInterval;
     uint32_t lastCheckTime;

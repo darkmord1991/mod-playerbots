@@ -589,6 +589,9 @@ public:
     bool AllowActive(ActivityType activityType);
     bool AllowActivity(ActivityType activityType = ALL_ACTIVITY, bool checkNow = false);
     bool IsActivityAllowedCached() const { return allowActive[ALL_ACTIVITY]; }
+    // The last AllowActive(ALL_ACTIVITY) kept the bot active for a reason of its own (real player near, group, queue,
+    // instance), not only by the BotActiveAlone rotation (Playerbots.DCPerf.SlowIdleTriggers).
+    bool IsForcedActive() const { return _forcedActive; }
     uint32 AutoScaleActivity(uint32 mod);
 
     // Check if player is safe to use.
@@ -664,6 +667,10 @@ public:
     // Schedules a callback to run once after <delayMs> milliseconds.
     void AddTimedEvent(std::function<void()> callback, uint32 delayMs);
 
+    // Playerbots.DCPerf.AiBudgetMs: the bot skipped its AI last tick, and the update time it has not used yet.
+    bool AiBudgetSkipped = false;
+    uint32 AiBudgetWaitMs = 0;
+
 private:
     static void _fillGearScoreData(Player* player, Item* item, std::vector<uint32>* gearScore, uint32& twoHandScore,
                                    bool mixed = false);
@@ -704,6 +711,7 @@ protected:
     static std::set<std::string> unsecuredCommands;
     bool allowActive[MAX_ACTIVITY_TYPE];
     time_t allowActiveCheckTimer[MAX_ACTIVITY_TYPE];
+    bool _forcedActive = true;
     ReactionEngine* reactionEngine = nullptr;
     bool inCombat = false;
     BotCheatMask cheatMask = BotCheatMask::none;

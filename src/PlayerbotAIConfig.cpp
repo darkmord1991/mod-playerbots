@@ -735,6 +735,8 @@ bool PlayerbotAIConfig::Initialize()
     BotActiveAloneSmartScaleDiffLimitCeiling = sConfigMgr->GetOption<uint32>("Playerbots.botActiveAloneSmartScaleDiffLimitCeiling", 200);
     BotActiveAloneSmartScaleWhenMinLevel = sConfigMgr->GetOption<uint32>("Playerbots.botActiveAloneSmartScaleWhenMinLevel", 1);
     BotActiveAloneSmartScaleWhenMaxLevel = sConfigMgr->GetOption<uint32>("Playerbots.botActiveAloneSmartScaleWhenMaxLevel", 80);
+    DCSlowIdleTriggers = sConfigMgr->GetOption<bool>("Playerbots.DCPerf.SlowIdleTriggers", false);
+    DCAiBudgetMs = std::min<uint32>(sConfigMgr->GetOption<uint32>("Playerbots.DCPerf.AiBudgetMs", 0), 1000);
 
     RandomBotsWalkingRPG = sConfigMgr->GetOption<bool>("Playerbots.RandombotsWalkingRPG", false);
     RandomBotsWalkingRPGInDoors = sConfigMgr->GetOption<bool>("Playerbots.RandombotsWalkingRPG.InDoors", false);
