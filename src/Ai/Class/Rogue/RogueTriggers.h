@@ -55,13 +55,6 @@ public:
     RuptureTrigger(PlayerbotAI* botAI) : DebuffTrigger(botAI, "rupture", 1, true) {}
 };
 
-class ExposeArmorTrigger : public DebuffTrigger
-{
-public:
-    ExposeArmorTrigger(PlayerbotAI* botAI) : DebuffTrigger(botAI, "expose armor") {}
-    virtual bool IsActive() override;
-};
-
 class KickInterruptEnemyHealerSpellTrigger : public InterruptEnemyHealerTrigger
 {
 public:

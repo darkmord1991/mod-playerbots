@@ -112,13 +112,6 @@ bool SprintTrigger::IsActive()
             ServerFacade::instance().IsDistanceGreaterThan(AI_VALUE2(float, "distance", "enemy player target"), distance));
 }
 
-bool ExposeArmorTrigger::IsActive()
-{
-    Unit* target = AI_VALUE(Unit*, "current target");
-    return DebuffTrigger::IsActive() && !botAI->HasAura("sunder armor", target, false, false, -1, true) &&
-           AI_VALUE2(uint8, "combo", "current target") <= 3;
-}
-
 bool MainHandWeaponNoEnchantTrigger::IsActive()
 {
     Item* const itemForSpell = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);

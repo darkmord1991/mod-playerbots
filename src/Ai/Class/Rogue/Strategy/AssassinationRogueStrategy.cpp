@@ -120,12 +120,5 @@ void AssassinationRogueStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
         )
     );
 
-    triggers.push_back(
-        new TriggerNode(
-            "expose armor",
-            {
-                NextAction("expose armor", ACTION_HIGH + 3),
-            }
-        )
-    );
+    // No Expose Armor: cast at 1-3 combo points it took the finishers, and it does not stack with Sunder Armor.
 }

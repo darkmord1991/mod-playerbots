@@ -69,7 +69,6 @@ public:
         creators["rupture"] = &RogueTriggerFactoryInternal::rupture;
         creators["slice and dice"] = &RogueTriggerFactoryInternal::slice_and_dice;
         creators["hunger for blood"] = &RogueTriggerFactoryInternal::hunger_for_blood;
-        creators["expose armor"] = &RogueTriggerFactoryInternal::expose_armor;
         creators["kick on enemy healer"] = &RogueTriggerFactoryInternal::kick_on_enemy_healer;
         creators["unstealth"] = &RogueTriggerFactoryInternal::unstealth;
         creators["sap"] = &RogueTriggerFactoryInternal::sap;
@@ -93,7 +92,6 @@ private:
     static Trigger* rupture(PlayerbotAI* botAI) { return new RuptureTrigger(botAI); }
     static Trigger* slice_and_dice(PlayerbotAI* botAI) { return new SliceAndDiceTrigger(botAI); }
     static Trigger* hunger_for_blood(PlayerbotAI* botAI) { return new HungerForBloodTrigger(botAI); }
-    static Trigger* expose_armor(PlayerbotAI* botAI) { return new ExposeArmorTrigger(botAI); }
     static Trigger* kick_on_enemy_healer(PlayerbotAI* botAI)
     {
         return new KickInterruptEnemyHealerSpellTrigger(botAI);
