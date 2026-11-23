@@ -26,6 +26,10 @@ protected:
     bool AcceptUnit(Unit* unit) override;
 };
 
+// New-rpg scans are read every tick, but NPCs and quest objects do not move and every consumer re-checks the GUID.
+// Adapted from SquidBots (Zyth45/mod-playerbots f40d14fd, after jeddhor ef0362bd).
+constexpr uint32 NEW_RPG_SCAN_INTERVAL_SECONDS = 2;
+
 class PossibleNewRpgTargetsValue : public NearestUnitsValue
 {
 public:
@@ -45,7 +49,8 @@ class PossibleNewRpgGameObjectsValue : public ObjectGuidListCalculatedValue
 {
 public:
     PossibleNewRpgGameObjectsValue(PlayerbotAI* botAI, bool ignoreLos = true)
-        : ObjectGuidListCalculatedValue(botAI, "possible new rpg game objects"), ignoreLos(ignoreLos)
+        : ObjectGuidListCalculatedValue(botAI, "possible new rpg game objects", NEW_RPG_SCAN_INTERVAL_SECONDS),
+          ignoreLos(ignoreLos)
     {
     }
 

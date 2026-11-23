@@ -11,15 +11,33 @@
 
 class PlayerbotAI;
 
+// Kept for one AI pass: "not dps target active" and then the action searched it again in the same pass (PerfMon at
+// 3,000 bots: 286,721 searches for 303,635 trigger checks). Ported from SquidBots (Zyth45/mod-playerbots 85b5c5f6).
+constexpr uint32 DPS_TARGET_CACHE_MS = 100;
+
 class DpsTargetValue : public RtiTargetValue
 {
 public:
     DpsTargetValue(PlayerbotAI* botAI, std::string const type = "rti", std::string const name = "dps target")
         : RtiTargetValue(botAI, type, name)
     {
+        checkInterval = DPS_TARGET_CACHE_MS;
     }
 
     Unit* Calculate() override;
+
+    // A kept target that died is searched again at once.
+    Unit* Get() override
+    {
+        Unit* target = RtiTargetValue::Get();
+        if (target && !target->IsAlive())
+        {
+            Reset();
+            target = RtiTargetValue::Get();
+        }
+
+        return target;
+    }
 };
 
 class DpsAoeTargetValue : public RtiTargetValue

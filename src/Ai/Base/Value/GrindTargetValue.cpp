@@ -11,6 +11,18 @@
 #include "ServerFacade.h"
 #include "SharedDefines.h"
 
+Unit* GrindTargetValue::Get()
+{
+    Unit* target = TargetValue::Get();
+    if (target && (target->IsDuringRemoveFromWorld() || !target->IsAlive()))
+    {
+        Reset();
+        target = TargetValue::Get();
+    }
+
+    return target;
+}
+
 Unit* GrindTargetValue::Calculate()
 {
     uint32 memberCount = 1;

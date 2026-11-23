@@ -7,7 +7,10 @@
 #ifndef PLAYERBOTS_GRINDTARGETVALUE_H
 #define PLAYERBOTS_GRINDTARGETVALUE_H
 
+#include "PlayerbotAIConfig.h"
 #include "TargetValue.h"
+
+#include <algorithm>
 
 class PlayerbotAI;
 class Unit;
@@ -15,8 +18,14 @@ class Unit;
 class GrindTargetValue : public TargetValue
 {
 public:
-    GrindTargetValue(PlayerbotAI* botAI, std::string const name = "grind target") : TargetValue(botAI, name) {}
+    // Several triggers and actions read the grind target in one tick: one search per reaction cycle. Adapted from
+    // SquidBots (Zyth45/mod-playerbots 5af1ce9f, after bissakov 43d3482e).
+    GrindTargetValue(PlayerbotAI* botAI, std::string const name = "grind target") : TargetValue(botAI, name)
+    {
+        checkInterval = std::max<uint32>(2, sPlayerbotAIConfig.ReactDelay);
+    }
 
+    Unit* Get() override;
     Unit* Calculate() override;
 
 private:

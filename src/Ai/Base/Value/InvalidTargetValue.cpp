@@ -16,9 +16,14 @@ bool InvalidTargetValue::Calculate()
     if (IsUnavailableCombatTarget(bot, target))
         return true;
 
-    Unit* enemy = AI_VALUE(Unit*, "enemy player target");
-    if (target && enemy && target == enemy && target->IsAlive())
-        return false;
+    // Only a player can be the enemy player target: asking that value for anything else ran its search every tick.
+    // Ported from SquidBots (Zyth45/mod-playerbots 9696dbe3).
+    if (target->IsPlayer())
+    {
+        Unit* enemy = AI_VALUE(Unit*, "enemy player target");
+        if (enemy && target == enemy)
+            return false;
+    }
 
     if (target && qualifier == "current target")
     {
