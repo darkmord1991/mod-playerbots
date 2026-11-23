@@ -11,6 +11,7 @@
 #include "Opcodes.h"
 #include "Playerbots.h"
 #include "RandomPlayerbotMgr.h"
+#include "Timer.h"
 #include "World.h"
 #include "WorldPacket.h"
 
@@ -20,6 +21,8 @@ namespace
 {
     constexpr uint8 CLASSIC_MAX_LEVEL = 60;
     constexpr uint8 TBC_MAX_LEVEL = 70;
+    // A busy bot accepts at the latest this long before the proposal expires; it answers on a later AI tick.
+    constexpr uint32 LFG_PROPOSAL_ANSWER_MARGIN_MS = 8000;
 
     bool IsExpansionOutleveled(LFGDungeonEntry const* dungeon, uint8 level)
     {
@@ -220,75 +223,87 @@ bool LfgRoleCheckAction::Execute(Event /*event*/)
     return false;
 }
 
+// A decline cancels the dungeon for the whole group, real players included, so a bot that is fighting or dead never
+// declines: it accepts once free, or anyway shortly before the proposal expires. Ported from SquidBots
+// (Zyth45/mod-playerbots c3d76038).
 bool LfgAcceptAction::Execute(Event event)
 {
     uint32 id = AI_VALUE(uint32, "lfg proposal");
 
-    // Try accept if already stored
-    if (id)
-    {
-        if (bot->IsInCombat() || bot->isDead())
-        {
-            WorldPacket* packet = new WorldPacket(CMSG_LFG_PROPOSAL_RESULT);
-            *packet << id << false;
-            bot->GetSession()->QueuePacket(packet);
-            return true;
-        }
-
-        botAI->GetAiObjectContext()->GetValue<uint32>("lfg proposal")->Set(0);
-        bot->ClearUnitState(UNIT_STATE_ALL_STATE);
-
-        WorldPacket* packet = new WorldPacket(CMSG_LFG_PROPOSAL_RESULT);
-        *packet << id << true;
-        bot->GetSession()->QueuePacket(packet);
-
-        if (RandomPlayerbotMgr::instance().IsRandomBot(bot) && !bot->GetGroup())
-        {
-            RandomPlayerbotMgr::instance().Refresh(bot);
-            botAI->ResetStrategies();
-        }
-
-        botAI->Reset();
-        return true;
-    }
-
-    // If we get the proposal packet, accept immediately
     if (!event.getPacket().empty())
     {
         WorldPacket p(event.getPacket());
         uint32 dungeonId;
         uint8 state;
-        p >> dungeonId >> state >> id;
+        uint32 packetId;
+        p >> dungeonId >> state >> packetId;
 
-        if (id)
+        if (state != LFG_PROPOSAL_INITIATING)
         {
-            if (bot->IsInCombat() || bot->isDead())
-            {
-                WorldPacket* packet = new WorldPacket(CMSG_LFG_PROPOSAL_RESULT);
-                *packet << id << false;
-                bot->GetSession()->QueuePacket(packet);
-                return true;
-            }
+            if (packetId && (packetId == id || packetId == _pendingProposalId))
+                ForgetProposal();
 
-            botAI->GetAiObjectContext()->GetValue<uint32>("lfg proposal")->Set(0);
-            bot->ClearUnitState(UNIT_STATE_ALL_STATE);
-
-            WorldPacket* packet = new WorldPacket(CMSG_LFG_PROPOSAL_RESULT);
-            *packet << id << true;
-            bot->GetSession()->QueuePacket(packet);
-
-            if (RandomPlayerbotMgr::instance().IsRandomBot(bot) && !bot->GetGroup())
-            {
-                RandomPlayerbotMgr::instance().Refresh(bot);
-                botAI->ResetStrategies();
-            }
-
-            botAI->Reset();
-            return true;
+            return false;
         }
+
+        if (packetId)
+            id = packetId;
     }
 
-    return false;
+    if (!id)
+        return false;
+
+    // A real player's character answers for itself, and a bot in a battleground or arena stays out of it.
+    if (IsRealPlayer(bot) || IsSelfBot(bot) || bot->InBattleground() || bot->InArena())
+        return false;
+
+    uint32 const now = getMSTime();
+    if (id != _pendingProposalId)
+    {
+        _pendingProposalId = id;
+        _pendingSinceMs = now;
+    }
+
+    uint32 const waited = getMSTimeDiff(_pendingSinceMs, now);
+    uint32 const proposalMs = uint32(LFG_TIME_PROPOSAL) * IN_MILLISECONDS;
+    if (waited > proposalMs)
+    {
+        ForgetProposal();
+        return false;
+    }
+
+    uint32 const deadline = proposalMs > LFG_PROPOSAL_ANSWER_MARGIN_MS ? proposalMs - LFG_PROPOSAL_ANSWER_MARGIN_MS : 0;
+    bool const busy = bot->IsInCombat() || bot->isDead();
+    if (busy && waited < deadline)
+    {
+        // Kept so that "lfg proposal active" brings the bot back here.
+        botAI->GetAiObjectContext()->GetValue<uint32>("lfg proposal")->Set(id);
+        return false;
+    }
+
+    ForgetProposal();
+    if (!busy)
+        bot->ClearUnitState(UNIT_STATE_ALL_STATE);
+
+    WorldPacket* packet = new WorldPacket(CMSG_LFG_PROPOSAL_RESULT);
+    *packet << id << true;
+    bot->GetSession()->QueuePacket(packet);
+
+    if (RandomPlayerbotMgr::instance().IsRandomBot(bot) && !bot->GetGroup())
+    {
+        RandomPlayerbotMgr::instance().Refresh(bot);
+        botAI->ResetStrategies();
+    }
+
+    botAI->Reset();
+    return true;
+}
+
+void LfgAcceptAction::ForgetProposal()
+{
+    botAI->GetAiObjectContext()->GetValue<uint32>("lfg proposal")->Set(0);
+    _pendingProposalId = 0;
+    _pendingSinceMs = 0;
 }
 
 bool LfgLeaveAction::Execute(Event /*event*/)

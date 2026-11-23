@@ -1070,7 +1070,7 @@ void PlayerbotAI::Reset(bool full)
     aiObjectContext->GetValue<ObjectGuid>("pull strategy target")->Set(ObjectGuid::Empty);
     aiObjectContext->GetValue<GuidPosition>("rpg target")->Set(GuidPosition());
     aiObjectContext->GetValue<LootObject>("loot target")->Set(LootObject());
-    aiObjectContext->GetValue<uint32>("lfg proposal")->Set(0);
+    // "lfg proposal" survives a reset (graveyard teleport, death): LfgAcceptAction forgets it when the proposal ends.
     bot->SetTarget();
 
     LastSpellCast& lastSpell = aiObjectContext->GetValue<LastSpellCast&>("last spell cast")->Get();

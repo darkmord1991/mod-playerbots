@@ -31,6 +31,13 @@ public:
 
     bool Execute(Event event) override;
     bool isUseful() override { return true; }
+
+private:
+    void ForgetProposal();
+
+    // The proposal a fighting or dead bot is waiting to accept, and since when.
+    uint32 _pendingProposalId = 0;
+    uint32 _pendingSinceMs = 0;
 };
 
 class LfgRoleCheckAction : public LfgJoinAction

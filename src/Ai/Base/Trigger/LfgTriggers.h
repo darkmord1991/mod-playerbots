@@ -14,7 +14,8 @@ class PlayerbotAI;
 class LfgProposalActiveTrigger : public Trigger
 {
 public:
-    LfgProposalActiveTrigger(PlayerbotAI* botAI) : Trigger(botAI, "lfg proposal active", 40 * IN_MILLISECONDS) {}
+    // Checked every second: a bot waiting out combat must still accept within the 40 s proposal window.
+    LfgProposalActiveTrigger(PlayerbotAI* botAI) : Trigger(botAI, "lfg proposal active", 1 * IN_MILLISECONDS) {}
 
     bool IsActive() override;
 };
