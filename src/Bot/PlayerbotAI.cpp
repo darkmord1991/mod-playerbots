@@ -40,7 +40,9 @@
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotGuildMgr.h"
 #include "PlayerbotMgr.h"
+#include "PlayerbotOperation.h"
 #include "PlayerbotTextMgr.h"
+#include "PlayerbotWorldThreadProcessor.h"
 #include "Playerbots.h"
 #include "RaceMgr.h"
 #include "PositionValue.h"
@@ -63,8 +65,10 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <functional>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -76,6 +80,32 @@ constexpr uint32 SPELL_DK_FROST_PRESENCE = 48263;
 constexpr uint32 SPELL_GRAVITY_LAPSE_TK = 39432;
 constexpr uint32 SPELL_GRAVITY_LAPSE_MGT = 44226;
 constexpr uint32 VEHICLE_FLAG_FIXED_POSITION = 0x00200000;
+
+// Channels are shared by every map and the core changes their members under its own lock, so a bot speaks in them
+// from the world thread. Ported from SquidBots (Zyth45/mod-playerbots cc13643a).
+class BotChannelOperation : public PlayerbotOperation
+{
+public:
+    BotChannelOperation(ObjectGuid botGuid, std::string name, std::function<bool(PlayerbotAI*)> work)
+        : _botGuid(botGuid), _name(std::move(name)), _work(std::move(work))
+    {
+    }
+
+    bool Execute() override
+    {
+        Player* bot = ObjectAccessor::FindPlayer(_botGuid);
+        PlayerbotAI* botAI = bot ? GET_PLAYERBOT_AI(bot) : nullptr;
+        return botAI && _work(botAI);
+    }
+
+    ObjectGuid GetBotGuid() const override { return _botGuid; }
+    std::string GetName() const override { return _name; }
+
+private:
+    ObjectGuid _botGuid;
+    std::string _name;
+    std::function<bool(PlayerbotAI*)> _work;
+};
 }
 
 std::vector<std::string> PlayerbotAI::dispel_whitelist = {
@@ -3097,9 +3127,16 @@ bool PlayerbotAI::SayToGuild(std::string const& msg)
 bool PlayerbotAI::SayToWorld(std::string const& msg)
 {
     if (msg.empty())
-    {
         return false;
-    }
+
+    return PlayerbotWorldThreadProcessor::instance().QueueOperation(std::make_unique<BotChannelOperation>(
+        bot->GetGUID(), "say to world", [msg](PlayerbotAI* botAI) { return botAI->SayToWorldNow(msg); }));
+}
+
+bool PlayerbotAI::SayToWorldNow(std::string const& msg)
+{
+    if (msg.empty())
+        return false;
 
     ChannelMgr* cMgr = ChannelMgr::forTeam(bot->GetTeamId());
     if (!cMgr)
@@ -3117,6 +3154,16 @@ bool PlayerbotAI::SayToWorld(std::string const& msg)
 
 bool PlayerbotAI::SayToChannel(std::string const& msg, ChatChannelId const& chanId)
 {
+    if (msg.empty())
+        return false;
+
+    return PlayerbotWorldThreadProcessor::instance().QueueOperation(std::make_unique<BotChannelOperation>(
+        bot->GetGUID(), "say to channel",
+        [msg, chanId](PlayerbotAI* botAI) { return botAI->SayToChannelNow(msg, chanId); }));
+}
+
+bool PlayerbotAI::SayToChannelNow(std::string const& msg, ChatChannelId chanId)
+{
     // Checks whether the message or ChannelMgr is valid
     if (msg.empty())
         return false;
@@ -3130,9 +3177,6 @@ bool PlayerbotAI::SayToChannel(std::string const& msg, ChatChannelId const& chan
         return false;
 
     const auto current_str_zone = GetLocalizedAreaName(current_zone);
-
-    std::mutex socialMutex;
-    std::lock_guard<std::mutex> lock(socialMutex);  // Blocking for thread safety when accessing SocialMgr
 
     for (auto const& [key, channel] : cMgr->GetChannels())
     {

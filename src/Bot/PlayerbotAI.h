@@ -510,8 +510,12 @@ public:
                             PlayerbotSecurityLevel securityLevel = PLAYERBOT_SECURITY_ALLOW_ALL);
     bool TellError(std::string const text, PlayerbotSecurityLevel securityLevel = PLAYERBOT_SECURITY_ALLOW_ALL);
     bool SayToGuild(std::string const& msg);
+    // Queue the message for the world thread; true means it was queued, not that a channel took it.
     bool SayToWorld(std::string const& msg);
     bool SayToChannel(std::string const& msg, ChatChannelId const& chanId);
+    // What SayToWorld and SayToChannel run on the world thread.
+    bool SayToWorldNow(std::string const& msg);
+    bool SayToChannelNow(std::string const& msg, ChatChannelId chanId);
     bool SayToParty(std::string const& msg);
     bool SayToRaid(std::string const& msg);
     bool Yell(std::string const& msg);
