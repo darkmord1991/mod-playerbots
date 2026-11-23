@@ -735,7 +735,8 @@ void PlayerbotAI::HandleCommands()
             continue;
         }
 
-        if (!helper.ParseChatCommand(command, owner) && it->GetType() == CHAT_MSG_WHISPER)
+        bool const whisper = it->GetType() == CHAT_MSG_WHISPER;
+        if (!helper.ParseChatCommand(command, owner, whisper) && whisper)
         {
             // ostringstream out; out << "Unknown command " << command;
             // TellPlayer(out);

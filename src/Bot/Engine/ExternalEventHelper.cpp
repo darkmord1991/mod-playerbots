@@ -9,7 +9,7 @@
 #include "Playerbots.h"
 #include "Trigger.h"
 
-bool ExternalEventHelper::ParseChatCommand(std::string const command, Player* owner)
+bool ExternalEventHelper::ParseChatCommand(std::string const command, Player* owner, bool whisper)
 {
     if (HandleCommand(command, "", owner))
         return true;
@@ -31,6 +31,11 @@ bool ExternalEventHelper::ParseChatCommand(std::string const command, Player* ow
     }
 
     if (!ChatHelper::parseableItem(command))
+        return false;
+
+    // parseableItem matches plain words ("epic", "head", "5g"), so outside a whisper only a real item link asks for a
+    // trade. Ported from SquidBots (Zyth45/mod-playerbots a9f6d144).
+    if (!whisper && command.find("|Hitem:") == std::string::npos)
         return false;
 
     if (sPlayerbotAIConfig.EnableAutoTradeOnItemMention)
