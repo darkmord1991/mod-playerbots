@@ -4540,17 +4540,29 @@ void PlayerbotFactory::InitFood()
         return;
     }
     std::unordered_map<uint32, std::vector<uint32>> items;
-    ItemTemplateContainer const* itemTemplateContainer = sObjectMgr->GetItemTemplateStore();
-    for (ItemTemplateContainer::const_iterator i = itemTemplateContainer->begin(); i != itemTemplateContainer->end();
-         ++i)
+    // The food and drink items, listed once instead of walking the whole item store on every refresh.
+    static std::vector<uint32> const foodItemIds = []
     {
-        uint32 itemId = i->first;
+        std::vector<uint32> ids;
+        for (auto const& [itemId, itemProto] : *sObjectMgr->GetItemTemplateStore())
+        {
+            if (itemProto.Class != ITEM_CLASS_CONSUMABLE || itemProto.SubClass != ITEM_SUBCLASS_FOOD ||
+                (itemProto.Spells[0].SpellCategory != 11 && itemProto.Spells[0].SpellCategory != 59) ||
+                itemProto.Bonding != NO_BIND)
+                continue;
+
+            if (itemProto.Area || itemProto.Map || itemProto.RequiredCityRank || itemProto.RequiredHonorRank)
+                continue;
+
+            ids.push_back(itemId);
+        }
+
+        return ids;
+    }();
+    for (uint32 itemId : foodItemIds)
+    {
         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
         if (!proto)
-            continue;
-
-        if (proto->Class != ITEM_CLASS_CONSUMABLE || proto->SubClass != ITEM_SUBCLASS_FOOD ||
-            (proto->Spells[0].SpellCategory != 11 && proto->Spells[0].SpellCategory != 59) || proto->Bonding != NO_BIND)
             continue;
 
         if (proto->RequiredLevel > bot->GetLevel() ||
@@ -4558,9 +4570,6 @@ void PlayerbotFactory::InitFood()
             continue;
 
         if (proto->RequiredSkill && !bot->HasSkill(proto->RequiredSkill))
-            continue;
-
-        if (proto->Area || proto->Map || proto->RequiredCityRank || proto->RequiredHonorRank)
             continue;
 
         items[proto->Spells[0].SpellCategory].push_back(itemId);
@@ -5001,15 +5010,21 @@ void PlayerbotFactory::InitGlyphs(bool increment)
     }
 
     std::list<uint32> glyphs;
-    ItemTemplateContainer const* itemTemplates = sObjectMgr->GetItemTemplateStore();
-    for (ItemTemplateContainer::const_iterator i = itemTemplates->begin(); i != itemTemplates->end(); ++i)
+    // The glyph items, listed once: walking the whole item store for them on every bot refresh was a visible share of
+    // the server time. Ported from SquidBots (Zyth45/mod-playerbots 1d929a5c).
+    static std::vector<uint32> const glyphItemIds = []
     {
-        //uint32 itemId = i->first; //not used, line marked for removal.
-        ItemTemplate const* proto = &i->second;
-        if (!proto)
-            continue;
+        std::vector<uint32> ids;
+        for (auto const& [itemId, itemProto] : *sObjectMgr->GetItemTemplateStore())
+            if (itemProto.Class == ITEM_CLASS_GLYPH)
+                ids.push_back(itemId);
 
-        if (proto->Class != ITEM_CLASS_GLYPH)
+        return ids;
+    }();
+    for (uint32 glyphItemId : glyphItemIds)
+    {
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(glyphItemId);
+        if (!proto)
             continue;
 
         if ((proto->AllowableClass & bot->getClassMask()) == 0 || (proto->AllowableRace & bot->getRaceMask()) == 0)
