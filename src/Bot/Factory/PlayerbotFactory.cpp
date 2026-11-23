@@ -43,8 +43,10 @@
 #include "World.h"
 #include <algorithm>
 #include <array>
+#include <mutex>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include <array>
 #include <utility>
@@ -106,6 +108,9 @@ std::list<uint32> PlayerbotFactory::specialQuestIds;
 std::vector<uint32> PlayerbotFactory::enchantSpellIdCache;
 std::vector<uint32> PlayerbotFactory::enchantGemIdCache;
 std::unordered_map<uint32, std::vector<uint32>> PlayerbotFactory::trainerIdCache;
+// Bots level up, and learn their spells, on the map update threads. Ported from SquidBots (Zyth45/mod-playerbots
+// 7dce23de).
+static std::mutex TrainerIdCacheLock;
 std::vector<uint32> PlayerbotFactory::ccBreakTrinketCache;
 
 namespace
@@ -3735,6 +3740,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id)
 
 void PlayerbotFactory::InitAvailableSpells()
 {
+    std::unique_lock<std::mutex> cacheLock(TrainerIdCacheLock);
     if (trainerIdCache[bot->getClass()].empty())
     {
         CreatureTemplateContainer const* creatureTemplateContainer = sObjectMgr->GetCreatureTemplates();
@@ -3757,7 +3763,9 @@ void PlayerbotFactory::InitAvailableSpells()
             trainerIdCache[bot->getClass()].push_back(i->first);
         }
     }
-    for (uint32 trainerId : trainerIdCache[bot->getClass()])
+    std::vector<uint32> const trainerIds = trainerIdCache[bot->getClass()];
+    cacheLock.unlock();
+    for (uint32 trainerId : trainerIds)
     {
         Trainer::Trainer* trainer = sObjectMgr->GetTrainer(trainerId);
 
