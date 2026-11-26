@@ -70,6 +70,28 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         botAI->rpgInfo.stuckAttempts = 0;
     }
 
+    // The time the bot spent fighting, resting or doing anything but this walk is no time stuck: the combat branch above
+    // only runs when this action is called in combat, which the combat engine seldom does, so after a long fight on the
+    // way the bot was counted stuck at once and teleported to its target. A gap of more than MOVE_FAR_GAP_MS between two
+    // calls shortens the time counted as stuck by that gap (never below zero: the mark cannot move past now).
+    // Ported from SquidBots (Zyth45/mod-playerbots 5d4d0e08).
+    {
+        constexpr uint32 MOVE_FAR_GAP_MS = 5000;
+        uint32 const now = getMSTime();
+        uint32& last = botAI->rpgInfo.moveFarLastMs;
+        if (last && botAI->rpgInfo.stuckTs)
+        {
+            uint32 const gap = getMSTimeDiff(last, now);
+            if (gap > MOVE_FAR_GAP_MS)
+            {
+                uint32 const stuckFor = getMSTimeDiff(botAI->rpgInfo.stuckTs, now);
+                botAI->rpgInfo.stuckTs = now - (stuckFor > gap ? stuckFor - gap : 0);
+            }
+        }
+
+        last = now;
+    }
+
     // performance optimization
     if (!newDest && IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
     {

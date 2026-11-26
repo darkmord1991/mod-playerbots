@@ -117,6 +117,8 @@ struct NewRpgInfo
     float nearestMoveFarDis{FLT_MAX};
     uint32 stuckTs{0};
     uint32 stuckAttempts{0};
+    // When MoveFarTo last ran (getMSTime): a long gap between two calls is no time stuck.
+    uint32 moveFarLastMs{0};
     WorldPosition moveFarPos;
     // END MOVE_FAR
 
