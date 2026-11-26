@@ -5231,8 +5231,33 @@ void TravelMgr::PrepareDestinationCache()
             for (CreatureData const& creatureData : creatureDataList)
                 spawns.emplace_back(std::get<0>(gridTuple), creatureData.posX, creatureData.posY, creatureData.posZ);
 
-            // A real spawn, not the grid key * 50, which can be up to 25 yd in the air or underground.
-            GrindSpot const spot{WorldPosition(spawns, WP_MEAN_CENTROID), std::get<4>(gridTuple)};
+            // A real spawn, not the grid key * 50, which can be up to 25 yd in the air or underground, and not the
+            // mean of the spawns either: that point can lie in a wall, a lake or over a cliff. It is the spawn of a
+            // creature that walks which is nearest the mean (a bat or a bird has its spawn in the air). A cell with no
+            // such creature gives no spot. Ported from SquidBots (Zyth45/mod-playerbots 3b83eb54).
+            WorldPosition const centroid(spawns, WP_MEAN_CENTROID);
+            CreatureData const* walkingSpawn = nullptr;
+            float nearestDist = FLT_MAX;
+            for (CreatureData const& creatureData : creatureDataList)
+            {
+                CreatureTemplate const* proto = sObjectMgr->GetCreatureTemplate(creatureData.id);
+                if (!proto || !proto->Movement.IsGroundAllowed() || proto->Movement.IsFlightAllowed())
+                    continue;
+
+                float const dist = centroid.GetExactDist(creatureData.posX, creatureData.posY, creatureData.posZ);
+                if (dist < nearestDist)
+                {
+                    nearestDist = dist;
+                    walkingSpawn = &creatureData;
+                }
+            }
+
+            if (!walkingSpawn)
+                continue;
+
+            GrindSpot const spot{WorldLocation(std::get<0>(gridTuple), walkingSpawn->posX, walkingSpawn->posY,
+                                               walkingSpawn->posZ),
+                                 std::get<4>(gridTuple)};
             if (isNextToHigherThreat(std::get<0>(gridTuple), spot.loc, spot.phaseMask, level))
             {
                 ++threatenedSpots[std::get<0>(gridTuple)];
