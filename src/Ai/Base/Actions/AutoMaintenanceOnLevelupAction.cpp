@@ -6,11 +6,18 @@
 
 #include "AutoMaintenanceOnLevelupAction.h"
 #include "BroadcastHelper.h"
+#include "Config.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotFactory.h"
 #include "RandomPlayerbotMgr.h"
 #include "SharedDefines.h"
 #include "SpellMgr.h"
+
+namespace
+{
+// The first level at which a level up teleports a bot (Playerbots.DCLevelupTeleportGuard).
+constexpr uint8 LEVELUP_TELEPORT_MIN_LEVEL = 6;
+}  // namespace
 
 bool AutoMaintenanceOnLevelupAction::Execute(Event /*event*/)
 {
@@ -29,6 +36,17 @@ void AutoMaintenanceOnLevelupAction::AutoTeleportForLevel()
 
     if (botAI->HasGameClientMaster())
         return;
+
+    // A bot under level 6 is still in its starting area and has nothing to gain from a hub: a level up there teleports
+    // nowhere (a player starting a character saw such bots appear in front of them). From level 6 the teleport never
+    // arrives within 150 yards of a real player (RandomTeleportForLevelUp). Playerbots.DCLevelupTeleportGuard, read
+    // at each level up so `.reload config` applies it. Ported from SquidBots (Zyth45/mod-playerbots f4df9b4a).
+    if (sConfigMgr->GetOption<bool>("Playerbots.DCLevelupTeleportGuard", true, false))
+    {
+        if (bot->GetLevel() >= LEVELUP_TELEPORT_MIN_LEVEL)
+            sRandomPlayerbotMgr.RandomTeleportForLevelUp(bot);
+        return;
+    }
 
     sRandomPlayerbotMgr.RandomTeleportForLevel(bot);
     return;

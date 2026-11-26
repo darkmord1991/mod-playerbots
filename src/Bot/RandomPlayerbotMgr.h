@@ -169,6 +169,9 @@ public:
     uint32 GetTradeDiscount(Player* bot, Player* master);
     void Refresh(Player* bot);
     void RandomTeleportForLevel(Player* bot);
+    // The teleport of a level up (AutoTeleportForLevel): with Playerbots.DCLevelupTeleportGuard it never arrives within
+    // 150 yards of a real player. The other callers of RandomTeleportForLevel are unchanged.
+    void RandomTeleportForLevelUp(Player* bot);
     void RandomTeleportGrindForLevel(Player* bot);
     void RandomTeleportForRpg(Player* bot);
     uint32 GetMaxAllowedBotCount();
@@ -298,9 +301,13 @@ private:
     bool ProcessBot(uint32 bot);
     void ScheduleRandomize(uint32 bot, uint32 time);
     void RandomTeleport(Player* bot);
-    void RandomTeleport(Player* bot, std::vector<WorldLocation>& locs, bool hearth = false);
+    void RandomTeleport(Player* bot, std::vector<WorldLocation>& locs, bool hearth = false, bool levelUp = false);
+    void TeleportForLevel(Player* bot, bool levelUp);
     uint32 GetZoneLevel(uint16 mapId, float teleX, float teleY, float teleZ);
     void UpdatePlayerZones();
+    // World thread only: where the real players stand, every 2 seconds (RealPlayerNear reads it from map threads).
+    void UpdatePlayerSpots();
+    bool RealPlayerNear(uint32 mapId, float x, float y, float z, float range);
     std::vector<WorldLocation> GetPlayerZoneTeleportLocations(std::vector<WorldLocation> const& locs, Player* bot);
     std::vector<WorldLocation> GetPlayerZoneHubLocations(std::vector<WorldLocation> const& hubs, Player* bot);
     std::set<std::pair<uint32, uint32>> GetPlayerZones();
@@ -321,6 +328,17 @@ private:
     // Written on the world thread, read from map threads.
     std::set<std::pair<uint32, uint32>> _playerZones;
     std::mutex _playerZonesLock;
+    // Real players' positions in the open world (UpdatePlayerSpots), written on the world thread, read from map threads.
+    struct PlayerSpot
+    {
+        uint32 mapId;
+        float x;
+        float y;
+        float z;
+    };
+    std::vector<PlayerSpot> _playerSpots;
+    std::mutex _playerSpotsLock;
+    uint32 _playerSpotsAt = 0;
 
     // Account lists
     std::vector<uint32> rndBotTypeAccounts;             // Accounts marked as RNDbot (type 1)

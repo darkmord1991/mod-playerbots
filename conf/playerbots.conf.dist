@@ -1862,6 +1862,14 @@ Playerbots.RandomBotTeleHigherLevel = 3
 # Default: 1 (enabled)
 Playerbots.AutoTeleportForLevel = 1
 
+# DarkChaos: guard for the level-up teleport, ported from SquidBots (Zyth45/mod-playerbots f4df9b4a). A bot under
+# level 6 is still in its starting area and is not teleported at a level up. From level 6 the teleport never arrives
+# within 150 yards of a real player: such a location is left for the next one, and with none left the bot stays where
+# it is. Only the level up's teleport changes; the refresh, the bankers and the console's teleport are as before.
+# Read at each level up, so `.reload config` applies it.
+# Default: 1 (enabled)
+Playerbots.DCLevelupTeleportGuard = 1
+
 #
 #
 ####################################################################################################

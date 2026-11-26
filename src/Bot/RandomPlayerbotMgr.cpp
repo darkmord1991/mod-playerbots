@@ -338,6 +338,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 /*elapsed*/, bool /*minimal*/)
     if (sPlayerbotAIConfig.RandomBotConcentrateInPlayerZone)
         UpdatePlayerZones();
 
+    UpdatePlayerSpots();
+
     /*if (sPlayerbotAIConfig.enablePrototypePerformanceDiff)
     {
         LOG_INFO("playerbots", "---------------------------------------");
@@ -2052,7 +2054,10 @@ WorldLocation BankArrival(WorldLocation const& banker)
 }
 }
 
-void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>& locs, bool hearth)
+// How far a real player sees a bot appear: the departure check of RandomTeleport uses the same 150 yards.
+static constexpr float LEVELUP_ARRIVAL_SEEN_RANGE = 150.0f;
+
+void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>& locs, bool hearth, bool levelUp)
 {
     // ignore when alrdy teleported or not in the world yet.
     if (bot->IsBeingTeleported() || !bot->IsInWorld())
@@ -2173,6 +2178,12 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
         z = 0.05f + ground;
 
         if (!botAI->StarterLevelDistanceCheck(bot, loc, true))
+            continue;
+
+        // At a level up the departure is already unseen (150 yards, below) and so is the arrival: a location with a
+        // real player within 150 yards of it is left for the next one, none left and the bot stays where it is.
+        // Ported from SquidBots (Zyth45/mod-playerbots f4df9b4a).
+        if (levelUp && RealPlayerNear(loc.GetMapId(), x, y, z, LEVELUP_ARRIVAL_SEEN_RANGE))
             continue;
 
         LocaleConstant const& locale = sWorld->GetDefaultDbcLocale();
@@ -2298,7 +2309,11 @@ void RandomPlayerbotMgr::InitArenaTeams()
              RandomPlayerbotFactory::GetBotArenaTeamCount(ARENA_TYPE_5v5), sPlayerbotAIConfig.RandomBotArenaTeam5v5Count);
 }
 
-void RandomPlayerbotMgr::RandomTeleportForLevel(Player* bot)
+void RandomPlayerbotMgr::RandomTeleportForLevel(Player* bot) { TeleportForLevel(bot, false); }
+
+void RandomPlayerbotMgr::RandomTeleportForLevelUp(Player* bot) { TeleportForLevel(bot, true); }
+
+void RandomPlayerbotMgr::TeleportForLevel(Player* bot, bool levelUp)
 {
     if (bot->InBattleground())
         return;
@@ -2331,7 +2346,7 @@ void RandomPlayerbotMgr::RandomTeleportForLevel(Player* bot)
         {
             LOG_DEBUG("playerbots", "Random teleporting bot {} to a quest giver ({} candidates)",
                       bot->GetName().c_str(), qlocs.size());
-            RandomTeleport(bot, qlocs, /*hearth=*/false);
+            RandomTeleport(bot, qlocs, /*hearth=*/false, levelUp);
             return;
         }
     }
@@ -2344,7 +2359,7 @@ void RandomPlayerbotMgr::RandomTeleportForLevel(Player* bot)
             // Outdoors around the bank, not inside it (BankArrival); the home is set there too
             for (WorldLocation& loc : locs)
                 loc = BankArrival(loc);
-            RandomTeleport(bot, locs, /*hearth=*/true);
+            RandomTeleport(bot, locs, /*hearth=*/true, levelUp);
             return;
         }
     }
@@ -2360,7 +2375,7 @@ void RandomPlayerbotMgr::RandomTeleportForLevel(Player* bot)
 
     if (!locs.empty())
     {
-        RandomTeleport(bot, locs, false);
+        RandomTeleport(bot, locs, false, levelUp);
         return;
     }
 }
@@ -2488,6 +2503,57 @@ void RandomPlayerbotMgr::UpdatePlayerZones()
 
     std::lock_guard<std::mutex> lock(_playerZonesLock);
     _playerZones = std::move(playerMapZones);
+}
+
+// World thread only. Map threads must not walk `players` (it changes at every login and logout), so the arrival check
+// of a level up reads this copy, at most 2 seconds old: 150 yards are far more than a player moves in that time.
+void RandomPlayerbotMgr::UpdatePlayerSpots()
+{
+    constexpr uint32 PLAYER_SPOTS_INTERVAL_MS = 2000;
+    if (GetMSTimeDiffToNow(_playerSpotsAt) < PLAYER_SPOTS_INTERVAL_MS)
+        return;
+
+    _playerSpotsAt = getMSTime();
+
+    std::vector<PlayerSpot> spots;
+    for (Player* player : players)
+    {
+        // A GM in invisible mode does not count; every other player does.
+        if (!player || !player->IsInWorld() || (player->IsGameMaster() && !player->isGMVisible()))
+            continue;
+
+        if (!IsRealPlayer(player) && !IsSelfBot(player))
+            continue;
+
+        Map* map = player->GetMap();
+        // A teleport destination is a spot of the open world (WorldLocation has no instance id).
+        if (!map || map->Instanceable())
+            continue;
+
+        spots.push_back({map->GetId(), player->GetPositionX(), player->GetPositionY(), player->GetPositionZ()});
+    }
+
+    std::lock_guard<std::mutex> lock(_playerSpotsLock);
+    _playerSpots = std::move(spots);
+}
+
+bool RandomPlayerbotMgr::RealPlayerNear(uint32 mapId, float x, float y, float z, float range)
+{
+    float const rangeSq = range * range;
+    std::lock_guard<std::mutex> lock(_playerSpotsLock);
+    for (PlayerSpot const& spot : _playerSpots)
+    {
+        if (spot.mapId != mapId)
+            continue;
+
+        float const dx = spot.x - x;
+        float const dy = spot.y - y;
+        float const dz = spot.z - z;
+        if (dx * dx + dy * dy + dz * dz <= rangeSq)
+            return true;
+    }
+
+    return false;
 }
 
 void RandomPlayerbotMgr::RandomTeleportGrindForLevel(Player* bot)
