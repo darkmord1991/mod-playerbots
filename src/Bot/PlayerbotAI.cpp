@@ -1746,6 +1746,14 @@ void PlayerbotAI::DoNextAction(bool min)
         DropToFloorIfHanging();
     }
 
+    // A bot indoors gets off its mount, walking or standing: CheckMountState only refuses to mount it there, so a bot
+    // that rode into an inn stayed on its mount in the taproom. Not in a taxi flight, in the air, on a transport or in a
+    // battleground, and inside an instance only while it stands still (a dungeon's interior reads as indoors and the
+    // clear moves the bot itself). Ported from SquidBots (Zyth45/mod-playerbots 7b7241ec, 7ddd2bb1).
+    if (bot->IsMounted() && !bot->IsOutdoors() && !bot->IsInFlight() && !bot->HasUnitMovementFlag(MOVEMENTFLAG_FLYING) &&
+        !bot->GetTransport() && !bot->InBattleground() && (!bot->GetMap()->Instanceable() || !bot->isMoving()))
+        bot->RemoveAurasByType(SPELL_AURA_MOUNTED);
+
     bool minimal = !this->AllowActivity();
 
     currentEngine->DoNextAction(nullptr, 0, (minimal || min));
