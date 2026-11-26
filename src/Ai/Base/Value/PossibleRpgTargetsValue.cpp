@@ -171,6 +171,13 @@ bool PossibleNewRpgTargetsValue::AcceptUnit(Unit* unit)
     if (unit->HasNpcFlag(UNIT_NPC_FLAG_SPIRITHEALER))
         return false;
 
+    // Never an NPC that walks by itself (waypoints, random moves): its spot changes, and the path to it can end
+    // anywhere (a bot wandered for an hour to a citizen whose path ended under an inn's floor). About 8% of the
+    // spawns with an NPC flag here. Ported from SquidBots (Zyth45/mod-playerbots fa574eab).
+    if (Creature const* creature = unit->ToCreature())
+        if (creature->GetDefaultMovementType() != IDLE_MOTION_TYPE)
+            return false;
+
     for (uint32 npcFlag : allowedNpcFlags)
     {
         if (unit->HasNpcFlag(static_cast<NPCFlags>(npcFlag)))
