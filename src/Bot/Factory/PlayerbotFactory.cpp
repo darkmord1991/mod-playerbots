@@ -1739,11 +1739,9 @@ void PlayerbotFactory::ClearEverything()
 {
     // A death knight without a crater slot lives in the level 55-58 Scarlet Enclave, so it is reset
     // to the ordinary death knight start level rather than the realm's crater-onboarding level 1.
-    uint32 const startLevel =
-        bot->getClass() != CLASS_DEATH_KNIGHT ? sWorld->getIntConfig(CONFIG_START_PLAYER_LEVEL)
-        : CraterRoster::IsResident(bot->GetGUID().GetCounter())
-            ? sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL)
-            : BotStartLocations::GetDeathKnightStartLevel();
+    uint32 const startLevel = bot->getClass() != CLASS_DEATH_KNIGHT
+                                  ? sWorld->getIntConfig(CONFIG_START_PLAYER_LEVEL)
+                                  : BotStartLocations::GetDeathKnightLevelFloor(bot);
 
     bot->GiveLevel(startLevel);
     bot->SetUInt32Value(PLAYER_XP, 0);

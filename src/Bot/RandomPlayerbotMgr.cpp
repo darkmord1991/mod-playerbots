@@ -81,18 +81,11 @@ namespace
                !CraterRoster::Claim(bot->GetGUID().GetCounter());
     }
 
-    // Lowest level a death knight bot may be randomized to.
-    //
-    // With a crater slot that is the realm's own heroic start level: a crater death knight levels
-    // through the onboarding hub like every other class. Without one the bot belongs at the Ebon
-    // Hold start in the middle of the level 55-58 Scarlet Enclave, so it gets the ordinary death
-    // knight start level instead of being rolled back down into a death loop.
+    // Without a crater slot a death knight belongs at the Ebon Hold start in the level 55-58 Scarlet
+    // Enclave; rolled below that it dies, revives at its corpse and dies again.
     uint32 DeathKnightLevelFloor(Player* bot)
     {
-        if (CraterRoster::IsResident(bot->GetGUID().GetCounter()))
-            return sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL);
-
-        return BotStartLocations::GetDeathKnightStartLevel();
+        return BotStartLocations::GetDeathKnightLevelFloor(bot);
     }
 }
 
@@ -1838,6 +1831,16 @@ bool RandomPlayerbotMgr::ProcessBot(Player* bot)
         else
             RandomTeleportForLevel(bot);
 
+        return true;
+    }
+
+    // A death knight below its floor anywhere else is re-rolled now, not when its randomize timer comes up
+    // (up to MaxRandomBotRandomizeTime away): until then it is stuck in that death loop.
+    if (bot->getClass() == CLASS_DEATH_KNIGHT && bot->GetLevel() < DeathKnightLevelFloor(bot))
+    {
+        LOG_DEBUG("playerbots", "Bot #{} <{}>: death knight at level {}, below its floor, re-rolled", botId,
+                  bot->GetName(), bot->GetLevel());
+        RandomizeFirst(bot);
         return true;
     }
 

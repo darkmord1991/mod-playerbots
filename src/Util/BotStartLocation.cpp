@@ -9,6 +9,7 @@
 #include "DatabaseEnv.h"
 #include "Log.h"
 #include "ObjectAccessor.h"
+#include "Player.h"
 #include "PlayerbotAIConfig.h"
 #include "QueryResult.h"
 #include "SharedDefines.h"
@@ -90,6 +91,14 @@ uint32 BotStartLocations::GetDeathKnightStartLevel()
 {
     return std::max<uint32>(sPlayerbotAIConfig.DeathKnightStartLevel,
                             sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
+}
+
+uint32 BotStartLocations::GetDeathKnightLevelFloor(Player const* bot)
+{
+    if (CraterRoster::IsResident(bot->GetGUID().GetCounter()))
+        return sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL);
+
+    return GetDeathKnightStartLevel();
 }
 
 uint8 BotStartLocations::GetDonorRace(uint8 race)

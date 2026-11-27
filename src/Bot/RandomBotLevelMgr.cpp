@@ -10,6 +10,7 @@
 
 #include "RandomBotLevelMgr.h"
 #include "ArenaTeamMgr.h"
+#include "BotStartLocation.h"
 #include "DCBotMythicRun.h"
 #include "DatabaseEnv.h"
 #include "LFGMgr.h"
@@ -295,7 +296,7 @@ int RandomBotLevelMgr::GetLevelRangeIndex(uint8 level, TeamId team)
 }
 
 // Adjusts a bot's level to fit within the given bracket for its faction. Death Knights are never
-// assigned below CONFIG_START_HEROIC_PLAYER_LEVEL. The faction's level ranges are resolved via
+// assigned below BotStartLocations::GetDeathKnightLevelFloor(). The faction's level ranges are resolved via
 // GetFactionRanges() at call time (rather than through a cached reference), since those vectors can
 // be resized on a config reload.
 void RandomBotLevelMgr::AdjustBotToRange(Player* bot, int targetRangeIndex, TeamId team)
@@ -317,7 +318,7 @@ void RandomBotLevelMgr::AdjustBotToRange(Player* bot, int targetRangeIndex, Team
     uint8 botOriginalLevel = bot->GetLevel();
     uint8 newLevel = 0;
 
-    uint8 dkMinLevel = static_cast<uint8>(sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
+    uint8 dkMinLevel = static_cast<uint8>(BotStartLocations::GetDeathKnightLevelFloor(bot));
 
     if (bot->getClass() == CLASS_DEATH_KNIGHT)
     {
@@ -438,7 +439,7 @@ int RandomBotLevelMgr::GetOrFlagPlayerBracket(Player* player)
 
     int targetRange = -1;
     int smallestDiff = std::numeric_limits<int>::max();
-    uint8 dkMinLevel = static_cast<uint8>(sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
+    uint8 dkMinLevel = static_cast<uint8>(BotStartLocations::GetDeathKnightLevelFloor(player));
     for (int i = 0; i < _numRanges; ++i)
     {
         if (factionRanges[i].Lower > factionRanges[i].Upper)
@@ -499,6 +500,11 @@ void RandomBotLevelMgr::RedistributeSurplusBots(std::vector<Player*>& sourceBots
             ++targetIdx;
             continue;
         }
+
+        // AdjustBotToRange would leave this one where it is, and the range would stay short.
+        if (bot->getClass() == CLASS_DEATH_KNIGHT &&
+            GetFactionRanges(team)[targetRange].Upper < BotStartLocations::GetDeathKnightLevelFloor(bot))
+            continue;
 
         ObjectGuid botGuid = bot->GetGUID();
         bool alreadyFlagged = false;
@@ -837,7 +843,7 @@ void RandomBotLevelMgr::ResetBot(Player* player, uint8 currentLevel)
 {
     uint8 levelToResetTo = sPlayerbotAIConfig.ResetBotLevelResetTo;
 
-    uint8 dkMinLevel = static_cast<uint8>(sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
+    uint8 dkMinLevel = static_cast<uint8>(BotStartLocations::GetDeathKnightLevelFloor(player));
     if (player->getClass() == CLASS_DEATH_KNIGHT && levelToResetTo < dkMinLevel)
         levelToResetTo = dkMinLevel;
 
@@ -860,7 +866,7 @@ void RandomBotLevelMgr::SkipBotLevel(Player* player, uint8 currentLevel)
 {
     uint8 levelToSkipTo = sPlayerbotAIConfig.ResetBotLevelSkipTo;
 
-    uint8 dkMinLevel = static_cast<uint8>(sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL));
+    uint8 dkMinLevel = static_cast<uint8>(BotStartLocations::GetDeathKnightLevelFloor(player));
     if (player->getClass() == CLASS_DEATH_KNIGHT && levelToSkipTo < dkMinLevel)
         levelToSkipTo = dkMinLevel;
 
@@ -1048,7 +1054,7 @@ void RandomBotLevelMgr::OnBotLevelChanged(Player* player, uint8 oldLevel)
         return;
 
     if (player->getClass() == CLASS_DEATH_KNIGHT &&
-        newLevel == static_cast<uint8>(sWorld->getIntConfig(CONFIG_START_HEROIC_PLAYER_LEVEL)))
+        newLevel == static_cast<uint8>(BotStartLocations::GetDeathKnightLevelFloor(player)))
         return;
 
     // SkipFromLevel takes priority and is not affected by ScaledChance or RestrictTimePlayed.

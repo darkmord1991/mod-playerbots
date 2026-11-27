@@ -9,6 +9,8 @@
 
 #include "Define.h"
 
+class Player;
+
 // DarkChaos: `playercreateinfo` points every race at the onboarding hub on map 37, which is
 // deliberate for human players but useless for bots -- a bot parked there has no starter quests,
 // no graveyard and no travel-graph node, so the whole levelling pipeline stalls. These are the
@@ -52,6 +54,10 @@ namespace BotStartLocations
     // Never below the realm's own heroic start level: raising StartHeroicPlayerLevel past this
     // setting should raise bots with it.
     uint32 GetDeathKnightStartLevel();
+
+    // Lowest level a death knight bot may be set to, by any re-roll, reset or level bracket move: the realm's heroic
+    // start level while it holds a crater slot, GetDeathKnightStartLevel() anywhere else.
+    uint32 GetDeathKnightLevelFloor(Player const* bot);
 }
 
 // DarkChaos: the bots that hold one of the Playerbots.AzsharaCraterMaxBots slots on Azshara Crater.
