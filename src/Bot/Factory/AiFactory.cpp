@@ -297,6 +297,10 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
 
     engine->addStrategy("formation", false);
 
+    // DarkChaos: a solo random bot calls idle bots nearby into a fight it cannot win (see DCHelpRequests.h).
+    if (sPlayerbotAIConfig.DCCallForHelp && sRandomPlayerbotMgr.IsRandomBot(player) && !player->InBattleground())
+        engine->addStrategy("dc call for help", false);
+
     switch (player->getClass())
     {
         case CLASS_PRIEST:
@@ -615,6 +619,10 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
             // nonCombatEngine->addStrategy("group");
             // nonCombatEngine->addStrategy("guild");
             nonCombatEngine->addStrategy("grind", false);
+
+            // DarkChaos: answer another bot's call for help (see DCHelpRequests.h).
+            if (sPlayerbotAIConfig.DCCallForHelp)
+                nonCombatEngine->addStrategy("dc help nearby", false);
 
             if (sPlayerbotAIConfig.EnableNewRpgStrategy)
                 nonCombatEngine->addStrategy("new rpg", false);

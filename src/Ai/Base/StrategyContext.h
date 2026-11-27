@@ -33,6 +33,7 @@
 #include "DCHinterlandStrategy.h"  // DarkChaos
 #include "DCMythicRunStrategy.h"  // DarkChaos
 #include "DCItemUpgradeStrategy.h"  // DarkChaos
+#include "DCCallForHelpStrategy.h"  // DarkChaos
 #include "MaintenanceStrategy.h"
 #include "MarkRtiStrategy.h"
 #include "MeleeCombatStrategy.h"
@@ -126,6 +127,8 @@ public:
         creators["debug quest"] = &StrategyContext::debug_quest;
         creators["maintenance"] = &StrategyContext::maintenance;
         creators["dc upgrade"] = &StrategyContext::dc_upgrade;  // DarkChaos
+        creators["dc call for help"] = &StrategyContext::dc_call_for_help;  // DarkChaos
+        creators["dc help nearby"] = &StrategyContext::dc_help_nearby;  // DarkChaos
         creators["group"] = &StrategyContext::group;
         creators["guild"] = &StrategyContext::guild;
         creators["grind"] = &StrategyContext::grind;
@@ -205,6 +208,9 @@ private:
     static Strategy* maintenance(PlayerbotAI* botAI) { return new MaintenanceStrategy(botAI); }
     // DarkChaos: drives the DC item upgrade spend from the bot's own AI.
     static Strategy* dc_upgrade(PlayerbotAI* botAI) { return new DCItemUpgradeStrategy(botAI); }
+    // DarkChaos: solo random bots call idle bots nearby into fights they cannot win, see DCHelpRequests.h.
+    static Strategy* dc_call_for_help(PlayerbotAI* botAI) { return new DCCallForHelpStrategy(botAI); }
+    static Strategy* dc_help_nearby(PlayerbotAI* botAI) { return new DCHelpNearbyStrategy(botAI); }
     static Strategy* group(PlayerbotAI* botAI) { return new GroupStrategy(botAI); }
     static Strategy* guild (PlayerbotAI* botAI) { return new GuildStrategy(botAI); }
     static Strategy* grind(PlayerbotAI* botAI) { return new GrindingStrategy(botAI); }

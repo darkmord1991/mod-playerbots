@@ -390,6 +390,17 @@ public:
     bool DCRegainLineOfSight;
     // DarkChaos: healers and damage dealers keep out of idle packs during dungeon fights (Playerbots.DCBodyPullGuard).
     bool DCBodyPullGuard;
+    // DarkChaos: solo random bots call idle bots nearby into fights they cannot win (Playerbots.DCCallForHelp.*).
+    bool DCCallForHelp;
+    float DCCallForHelpRange;
+    float DCCallForHelpLevelGapRange;
+    uint32 DCCallForHelpMaxHelpers;
+    uint32 DCCallForHelpLevelsBelow;
+    uint32 DCCallForHelpLevelsAbove;
+    uint32 DCCallForHelpLevelGap;
+    uint32 DCCallForHelpFleeLevelGap;
+    uint32 DCCallForHelpFleeNormalLevelGap;
+    uint32 DCCallForHelpFleeNormalAlwaysLevelGap;
 
     bool FreeMethodLoot;
     int32 LootNeedRollLevel;

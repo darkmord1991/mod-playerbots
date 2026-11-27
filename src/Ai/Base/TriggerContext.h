@@ -9,6 +9,7 @@
 
 #include "BotStateTriggers.h"
 #include "CureTriggers.h"
+#include "DCCallForHelpActions.h"  // DarkChaos
 #include "DCHinterlandTactics.h"  // DarkChaos
 #include "DCMythicRunActions.h"  // DarkChaos
 #include "FishingTriggers.h"
@@ -100,6 +101,10 @@ public:
         creators["dc hlbg enemy near"] = &TriggerContext::dc_hlbg_enemy_near;
         // DarkChaos: the tank of a bot-only Mythic+ run, see DCMythicRunActions.h
         creators["dc mythic lead"] = &TriggerContext::dc_mythic_lead;
+        // DarkChaos: call for help / answer one, see DCHelpRequests.h
+        creators["dc heavy attacker"] = &TriggerContext::dc_heavy_attacker;
+        creators["dc help request nearby"] = &TriggerContext::dc_help_request_nearby;
+        creators["dc hopeless attacker"] = &TriggerContext::dc_hopeless_attacker;
 
         creators["tank assist"] = &TriggerContext::TankAssist;
         creators["lose aggro"] = &TriggerContext::LoseAggro;
@@ -356,6 +361,9 @@ private:
     static Trigger* enemy_player_near(PlayerbotAI* botAI) { return new EnemyPlayerNear(botAI); }
     static Trigger* dc_hlbg_enemy_near(PlayerbotAI* botAI) { return new DCHinterlandEnemyNearTrigger(botAI); }
     static Trigger* dc_mythic_lead(PlayerbotAI* botAI) { return new DCMythicLeadTrigger(botAI); }
+    static Trigger* dc_heavy_attacker(PlayerbotAI* botAI) { return new DCHeavyAttackerTrigger(botAI); }
+    static Trigger* dc_help_request_nearby(PlayerbotAI* botAI) { return new DCHelpRequestNearbyTrigger(botAI); }
+    static Trigger* dc_hopeless_attacker(PlayerbotAI* botAI) { return new DCHopelessAttackerTrigger(botAI); }
     static Trigger* wsg_support_threat(PlayerbotAI* botAI) { return new WsgSupportThreat(botAI); }
     static Trigger* wsg_escort_separated(PlayerbotAI* botAI) { return new WsgEscortSeparated(botAI); }
     static Trigger* Random(PlayerbotAI* botAI) { return new RandomTrigger(botAI, "random", 20); }

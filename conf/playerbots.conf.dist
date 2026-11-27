@@ -1386,6 +1386,40 @@ Playerbots.DCRegainLineOfSight = 1
 # Default: 1 (enabled)
 Playerbots.DCBodyPullGuard = 1
 
+# DarkChaos: call for help. A random bot fighting alone in the open world calls for help when an elite (up to 3 levels
+# below it), a rare elite, a world boss or a rare (its level or above) attacks it, and with LevelGap set also a normal
+# creature that many levels above it. Idle solo random bots of its faction, from HelperLevelsBelow levels below to
+# HelperLevelsAbove levels above it, come and attack the same creature, at most MaxHelpers per call. Helpers do not
+# group, so kill credit and loot stay with the caller. An elite, rare elite or world boss FleeLevelGap or more levels
+# above the bot, or any other creature FleeNormalLevelGap or more levels above it, is one it cannot win even with
+# help: it breaks off and runs until the creature gives up the chase.
+# Enable            - Default: 1 (enabled)
+# Range             - yards between the caller and a helper for elites and rares. Default: 100
+# LevelGapRange     - the same for the normal creatures LevelGap adds. Default: 60
+# MaxHelpers        - helpers per call. Default: 3
+# HelperLevelsBelow - helpers down to this many levels below the caller. Default: 0
+# HelperLevelsAbove - helpers up to this many levels above the caller. Default: 10
+# LevelGap          - normal creatures this many levels above the caller count too; 0 = elites and rares only.
+#                     Default: 0
+# FleeLevelGap      - elites this many levels above the bot make it run instead of calling; 0 = never run.
+#                     Default: 3
+# FleeNormalLevelGap - other creatures (normal, rare) this many levels above the bot make it run, but only once
+#                     the bot is losing (below 50% health and below the creature's health); 0 = never.
+#                     Default: 5
+# FleeNormalAlwaysLevelGap - other creatures this many levels above the bot make it run at any health; 0 = only
+#                     when losing (FleeNormalLevelGap).
+#                     Default: 8
+Playerbots.DCCallForHelp.Enable = 1
+Playerbots.DCCallForHelp.Range = 100
+Playerbots.DCCallForHelp.LevelGapRange = 60
+Playerbots.DCCallForHelp.MaxHelpers = 3
+Playerbots.DCCallForHelp.HelperLevelsBelow = 0
+Playerbots.DCCallForHelp.HelperLevelsAbove = 10
+Playerbots.DCCallForHelp.LevelGap = 0
+Playerbots.DCCallForHelp.FleeLevelGap = 3
+Playerbots.DCCallForHelp.FleeNormalLevelGap = 5
+Playerbots.DCCallForHelp.FleeNormalAlwaysLevelGap = 8
+
 #
 #
 ####################################################################################################

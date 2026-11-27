@@ -16,6 +16,7 @@
 #include "BuyAction.h"
 #include "CancelChannelAction.h"
 #include "CastCustomSpellAction.h"
+#include "DCCallForHelpActions.h"  // DarkChaos
 #include "DCHeirloomUpgradeAction.h"  // DarkChaos
 #include "DCHinterlandTactics.h"  // DarkChaos
 #include "DCMythicRunActions.h"  // DarkChaos
@@ -203,6 +204,9 @@ public:
         creators["smart destroy item"] = &ActionContext::smart_destroy_item;
         creators["dc upgrade items"] = &ActionContext::dc_upgrade_items;  // DarkChaos
         creators["dc heirloom upgrade"] = &ActionContext::dc_heirloom_upgrade;  // DarkChaos
+        creators["dc call for help"] = &ActionContext::dc_call_for_help;  // DarkChaos
+        creators["dc help nearby bot"] = &ActionContext::dc_help_nearby_bot;  // DarkChaos
+        creators["dc flee hopeless attacker"] = &ActionContext::dc_flee_hopeless_attacker;  // DarkChaos
         creators["disenchant random item"] = &ActionContext::disenchant_random_item;
         creators["enchant random item"] = &ActionContext::enchant_random_item;
         creators["reset instances"] = &ActionContext::reset_instances;
@@ -426,6 +430,10 @@ private:
     static Action* dc_upgrade_items(PlayerbotAI* botAI) { return new DCUpgradeItemsAction(botAI); }
     // DarkChaos: levels the bot's heirlooms and picks their stat package.
     static Action* dc_heirloom_upgrade(PlayerbotAI* botAI) { return new DCHeirloomUpgradeAction(botAI); }
+    // DarkChaos: post a call for help / answer one, see DCHelpRequests.h.
+    static Action* dc_call_for_help(PlayerbotAI* botAI) { return new DCCallForHelpAction(botAI); }
+    static Action* dc_help_nearby_bot(PlayerbotAI* botAI) { return new DCHelpNearbyBotAction(botAI); }
+    static Action* dc_flee_hopeless_attacker(PlayerbotAI* botAI) { return new DCFleeHopelessAttackerAction(botAI); }
     static Action* disenchant_random_item(PlayerbotAI* botAI) { return new DisEnchantRandomItemAction(botAI); }
     static Action* enchant_random_item(PlayerbotAI* botAI) { return new EnchantRandomItemAction(botAI); }
     static Action* reset_instances(PlayerbotAI* botAI) { return new ResetInstancesAction(botAI); }

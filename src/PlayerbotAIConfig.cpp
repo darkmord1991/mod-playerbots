@@ -739,6 +739,17 @@ bool PlayerbotAIConfig::Initialize()
     DCAiBudgetMs = std::min<uint32>(sConfigMgr->GetOption<uint32>("Playerbots.DCPerf.AiBudgetMs", 0), 1000);
     DCRegainLineOfSight = sConfigMgr->GetOption<bool>("Playerbots.DCRegainLineOfSight", true);
     DCBodyPullGuard = sConfigMgr->GetOption<bool>("Playerbots.DCBodyPullGuard", true);
+    DCCallForHelp = sConfigMgr->GetOption<bool>("Playerbots.DCCallForHelp.Enable", true);
+    DCCallForHelpRange = sConfigMgr->GetOption<float>("Playerbots.DCCallForHelp.Range", 100.0f);
+    DCCallForHelpLevelGapRange = sConfigMgr->GetOption<float>("Playerbots.DCCallForHelp.LevelGapRange", 60.0f);
+    DCCallForHelpMaxHelpers = sConfigMgr->GetOption<uint32>("Playerbots.DCCallForHelp.MaxHelpers", 3);
+    DCCallForHelpLevelsBelow = sConfigMgr->GetOption<uint32>("Playerbots.DCCallForHelp.HelperLevelsBelow", 0);
+    DCCallForHelpLevelsAbove = sConfigMgr->GetOption<uint32>("Playerbots.DCCallForHelp.HelperLevelsAbove", 10);
+    DCCallForHelpLevelGap = sConfigMgr->GetOption<uint32>("Playerbots.DCCallForHelp.LevelGap", 0);
+    DCCallForHelpFleeLevelGap = sConfigMgr->GetOption<uint32>("Playerbots.DCCallForHelp.FleeLevelGap", 3);
+    DCCallForHelpFleeNormalLevelGap = sConfigMgr->GetOption<uint32>("Playerbots.DCCallForHelp.FleeNormalLevelGap", 5);
+    DCCallForHelpFleeNormalAlwaysLevelGap =
+        sConfigMgr->GetOption<uint32>("Playerbots.DCCallForHelp.FleeNormalAlwaysLevelGap", 8);
 
     RandomBotsWalkingRPG = sConfigMgr->GetOption<bool>("Playerbots.RandombotsWalkingRPG", false);
     RandomBotsWalkingRPGInDoors = sConfigMgr->GetOption<bool>("Playerbots.RandombotsWalkingRPG.InDoors", false);
